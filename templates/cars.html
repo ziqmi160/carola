@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+
+{% block title %}Browse Cars - Carola Car Rental{% endblock %}
+
+{% block content %}
+<div class="cars-page">
+    <div class="container">
+        <h1 class="page-title">Browse Our Fleet</h1>
+        
+        <div class="filters-section">
+            <div class="filters-grid">
+                <div class="filter-group">
+                    <label><i class="fas fa-map-marker-alt"></i> Location</label>
+                    <select id="filter-location">
+                        <option value="">All Locations</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label><i class="fas fa-car"></i> Car Type</label>
+                    <select id="filter-type">
+                        <option value="">All Types</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label><i class="fas fa-tag"></i> Brand</label>
+                    <select id="filter-brand">
+                        <option value="">All Brands</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label><i class="fas fa-gas-pump"></i> Vehicle Type</label>
+                    <select id="filter-fuel">
+                        <option value="">All Types</option>
+                        <option value="Petrol">Petrol</option>
+                        <option value="Diesel">Diesel</option>
+                        <option value="Electric">Electric</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label><i class="fas fa-users"></i> Seats</label>
+                    <select id="filter-seats">
+                        <option value="">All Seats</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label><i class="fas fa-suitcase"></i> Bags</label>
+                    <select id="filter-bags">
+                        <option value="">All Bags</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label><i class="fas fa-dollar-sign"></i> Price Range</label>
+                    <div class="price-range">
+                        <input type="number" id="min-price" placeholder="Min" min="0">
+                        <span>-</span>
+                        <input type="number" id="max-price" placeholder="Max" min="0">
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <button class="btn btn-primary" onclick="applyFilters()"><i class="fas fa-filter"></i> Apply Filters</button>
+                    <button class="btn btn-secondary" onclick="clearFilters()"><i class="fas fa-times"></i> Clear</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="cars-container" class="cars-grid">
+            <div class="loading">Loading cars...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let filters = {};
+    
+    // Load filters
+    fetch('/api/filters')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const locationSelect = document.getElementById('filter-location');
+                const typeSelect = document.getElementById('filter-type');
+                const brandSelect = document.getElementById('filter-brand');
+                const seatsSelect = document.getElementById('filter-seats');
+                const bagsSelect = document.getElementById('filter-bags');
+                
+                // Populate locations
+                if (data.locations) {
+                    data.locations.forEach(loc => {
+                        const option = document.createElement('option');
+                        option.value = loc.location;
+                        option.textContent = loc.location;
+                        locationSelect.appendChild(option);
+                    });
+                }
+                
+                // Populate car types
+                data.types.forEach(type => {
+                    const option = document.createElement('option');
+                    option.value = type.CARTYPE_ID;
+                    option.textContent = type.CARTYPE_NAME;
+                    typeSelect.appendChild(option);
+                });
+                
+                // Populate brands
+                data.brands.forEach(brand => {
+                    const option = document.createElement('option');
+                    option.value = brand.BRAND_ID;
+                    option.textContent = brand.BRAND_NAME;
+                    brandSelect.appendChild(option);
+                });
+                
+                // Populate seats
+                if (data.seats) {
+                    data.seats.forEach(seat => {
+                        const option = document.createElement('option');
+                        option.value = seat.seat;
+                        option.textContent = seat.seat + ' Seats';
+                        seatsSelect.appendChild(option);
+                    });
+                }
+                
+                // Populate bags
+                if (data.bags) {
+                    data.bags.forEach(bag => {
+                        const option = document.createElement('option');
+                        option.value = bag.bag;
+                        option.textContent = bag.bag + ' Bags';
+                        bagsSelect.appendChild(option);
+                    });
+                }
+            }
+        });
+    
+    function applyFilters() {
+        filters = {
+            location: document.getElementById('filter-location').value,
+            type: document.getElementById('filter-type').value,
+            brand: document.getElementById('filter-brand').value,
+            fuel_type: document.getElementById('filter-fuel').value,
+            seats: document.getElementById('filter-seats').value,
+            bags: document.getElementById('filter-bags').value,
+            min_price: document.getElementById('min-price').value,
+            max_price: document.getElementById('max-price').value
+        };
+        loadCars();
+    }
+    
+    function clearFilters() {
+        document.getElementById('filter-location').value = '';
+        document.getElementById('filter-type').value = '';
+        document.getElementById('filter-brand').value = '';
+        document.getElementById('filter-fuel').value = '';
+        document.getElementById('filter-seats').value = '';
+        document.getElementById('filter-bags').value = '';
+        document.getElementById('min-price').value = '';
+        document.getElementById('max-price').value = '';
+        filters = {};
+        loadCars();
+    }
+    
+    function loadCars() {
+        const container = document.getElementById('cars-container');
+        container.innerHTML = '<div class="loading">Loading cars...</div>';
+        
+        const params = new URLSearchParams();
+        Object.keys(filters).forEach(key => {
+            if (filters[key]) params.append(key, filters[key]);
+        });
+        
+        fetch(`/api/cars?${params.toString()}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const cars = data.cars;
+                    
+                    if (cars.length === 0) {
+                        container.innerHTML = '<p class="no-results">No cars found matching your criteria.</p>';
+                        return;
+                    }
+                    
+                    container.innerHTML = cars.map(car => `
+                        <div class="car-card">
+                            <div class="car-image">
+                                <img src="${car.ATTACHMENTS ? '/uploads/' + car.ATTACHMENTS : 'https://via.placeholder.com/300x200?text=' + encodeURIComponent(car.BRAND_NAME + ' ' + car.MODEL_NAME)}" 
+                                     alt="${car.BRAND_NAME} ${car.MODEL_NAME}" 
+                                     onerror="this.src='https://via.placeholder.com/300x200?text=Car+Image'">
+                            </div>
+                            <div class="car-info">
+                                <h3>${car.BRAND_NAME} ${car.MODEL_NAME}</h3>
+                                <p class="car-type">${car.CARTYPE_NAME} • ${car.FUEL_TYPE || 'N/A'}</p>
+                                <p class="car-description">${car.DESCRIPTION || ''}</p>
+                                <div class="car-details">
+                                    <span><i class="fas fa-door-open"></i> ${car.DOOR} Doors</span>
+                                    <span><i class="fas fa-users"></i> ${car.SEAT} Seats</span>
+                                    <span><i class="fas fa-suitcase"></i> ${car.SUITCASE} Bags</span>
+                                    <span><i class="fas fa-palette"></i> ${car.COLOUR}</span>
+                                    <span><i class="fas fa-map-marker-alt"></i> ${car.AVAILABLE_LOCATIONS ? car.AVAILABLE_LOCATIONS.split(',')[0] : 'N/A'}</span>
+                                </div>
+                                <div class="car-footer">
+                                    <span class="car-price">RM ${parseFloat(car.RATE).toFixed(2)}/day</span>
+                                    <a href="/book/${car.CAR_ID}" class="btn btn-primary">Book Now</a>
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = `<p class="error">${data.message}</p>`;
+                }
+            })
+            .catch(err => {
+                container.innerHTML = '<p class="error">Failed to load cars. Please try again later.</p>';
+                console.error('Error:', err);
+            });
+    }
+    
+    // Load cars on page load
+    loadCars();
+</script>
+{% endblock %}
+
