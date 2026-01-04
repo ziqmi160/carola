@@ -1,0 +1,301 @@
+{% extends "base.html" %}
+
+{% block title %}Book Car - Carola Car Rental{% endblock %}
+
+{% block content %}
+<div class="booking-page">
+    <div class="container">
+        <h1 class="page-title">Book Your Car</h1>
+        
+        <div class="booking-container">
+            <div class="booking-form-section">
+                <h2>Booking Details</h2>
+                <form id="bookingForm">
+                    <input type="hidden" id="car_id" value="{{ car_id }}">
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="pickup_date">Pickup Date</label>
+                            <input type="date" id="pickup_date" name="pickup_date" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="dropoff_date">Drop-off Date</label>
+                            <input type="date" id="dropoff_date" name="dropoff_date" required>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="pickup_location">Pickup Location</label>
+                        <select id="pickup_location" name="pickup_location" required>
+                            <option value="">Select pickup location...</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="dropoff_location">Drop-off Location</label>
+                        <select id="dropoff_location" name="dropoff_location" required>
+                            <option value="">Select drop-off location...</option>
+                        </select>
+                    </div>
+                    
+                    <div id="price-summary" class="price-summary" style="display: none;">
+                        <h3>Price Summary</h3>
+                        <div class="price-details">
+                            <p>Daily Rate: <span id="daily-rate">RM 0.00</span></p>
+                            <p>Number of Days: <span id="num-days">0</span></p>
+                            <p class="total-price">Total: <span id="total-price">RM 0.00</span></p>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-block">Confirm Booking</button>
+                </form>
+                <div id="message" class="message"></div>
+            </div>
+            
+            <div class="car-details-section">
+                <div id="car-details">
+                    <div class="loading">Loading car details...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const carId = document.getElementById('car_id').value;
+    const today = new Date().toISOString().split('T')[0];
+    document.getElementById('pickup_date').min = today;
+    document.getElementById('dropoff_date').min = today;
+    
+    // Load car details
+    fetch(`/api/car/${carId}`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const car = data.car;
+                const carDetailsDiv = document.getElementById('car-details');
+                
+                carDetailsDiv.innerHTML = `
+                    <div class="car-booking-card">
+                        <img src="${car.ATTACHMENTS ? '/uploads/' + car.ATTACHMENTS : 'https://via.placeholder.com/400x300?text=' + encodeURIComponent(car.BRAND_NAME + ' ' + car.MODEL_NAME)}" 
+                             alt="${car.BRAND_NAME} ${car.MODEL_NAME}" 
+                             onerror="this.src='https://via.placeholder.com/400x300?text=Car+Image'">
+                        <h2>${car.BRAND_NAME} ${car.MODEL_NAME}</h2>
+                        <p class="car-type">${car.CARTYPE_NAME} • ${car.FUEL_TYPE || 'N/A'}</p>
+                        <p class="car-description">${car.DESCRIPTION || ''}</p>
+                        <div class="car-specs">
+                            <div class="spec-item">
+                                <i class="fas fa-dollar-sign"></i>
+                                <span>RM ${parseFloat(car.RATE).toFixed(2)}/day</span>
+                            </div>
+                            <div class="spec-item">
+                                <i class="fas fa-door-open"></i>
+                                <span>${car.DOOR} Doors</span>
+                            </div>
+                            <div class="spec-item">
+                                <i class="fas fa-users"></i>
+                                <span>${car.SEAT} Seats</span>
+                            </div>
+                            <div class="spec-item">
+                                <i class="fas fa-suitcase"></i>
+                                <span>${car.SUITCASE} Bags</span>
+                            </div>
+                            <div class="spec-item">
+                                <i class="fas fa-palette"></i>
+                                <span>${car.COLOUR}</span>
+                            </div>
+                        </div>
+                        ${car.FUEL_TYPE === 'Petrol' ? `
+                            <div class="fuel-specs">
+                                <h4>Petrol Specifications</h4>
+                                <div class="spec-item">
+                                    <i class="fas fa-gas-pump"></i>
+                                    <span>Octane Rating: ${car.OCTANE_RATING || 'N/A'}</span>
+                                </div>
+                                <div class="spec-item">
+                                    <i class="fas fa-tint"></i>
+                                    <span>Fuel Tank Capacity: ${car.PETROL_TANK || 'N/A'}L</span>
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${car.FUEL_TYPE === 'Diesel' ? `
+                            <div class="fuel-specs">
+                                <h4>Diesel Specifications</h4>
+                                <div class="spec-item">
+                                    <i class="fas fa-leaf"></i>
+                                    <span>Emission Standard: ${car.DIESEL_EMISSION || 'N/A'}</span>
+                                </div>
+                                <div class="spec-item">
+                                    <i class="fas fa-tint"></i>
+                                    <span>Fuel Tank Capacity: ${car.DIESEL_TANK || 'N/A'}L</span>
+                                </div>
+                            </div>
+                        ` : ''}
+                        ${car.FUEL_TYPE === 'Electric' ? `
+                            <div class="fuel-specs">
+                                <h4>Electric Specifications</h4>
+                                <div class="spec-item">
+                                    <i class="fas fa-battery-full"></i>
+                                    <span>Battery Range: ${car.BATTERY_RANGE || 'N/A'} km</span>
+                                </div>
+                                <div class="spec-item">
+                                    <i class="fas fa-bolt"></i>
+                                    <span>Charging Rate: ${car.CHARGING_RATE_KW || 'N/A'} kW</span>
+                                </div>
+                                <div class="spec-item">
+                                    <i class="fas fa-calendar"></i>
+                                    <span>Last Charging Date: ${car.LAST_CHARGING_DATE ? new Date(car.LAST_CHARGING_DATE).toLocaleDateString() : 'N/A'}</span>
+                                </div>
+                            </div>
+                        ` : ''}
+                        <div class="location-info">
+                            <h4>Available Locations</h4>
+                            <p>${car.AVAILABLE_LOCATIONS || 'N/A'}</p>
+                            <h4>Pickup Locations</h4>
+                            <p>${car.PICKUP_LOCATION || 'N/A'}</p>
+                            ${car.ALLOWS_DIFFERENT_DROPOFF == 1 ? '<p class="info-text"><i class="fas fa-info-circle"></i> Different drop-off location allowed</p>' : '<p class="info-text"><i class="fas fa-info-circle"></i> Same drop-off location required</p>'}
+                        </div>
+                    </div>
+                `;
+                
+                // Populate pickup location dropdown
+                const pickupSelect = document.getElementById('pickup_location');
+                if (car.PICKUP_LOCATION) {
+                    const pickupLocations = car.PICKUP_LOCATION.split(',').map(loc => loc.trim()).filter(loc => loc);
+                    pickupLocations.forEach(loc => {
+                        const option = document.createElement('option');
+                        option.value = loc;
+                        option.textContent = loc;
+                        pickupSelect.appendChild(option);
+                    });
+                    // Set default to first location
+                    if (pickupLocations.length > 0) {
+                        pickupSelect.value = pickupLocations[0];
+                    }
+                }
+                
+                // Populate dropoff location dropdown
+                const dropoffSelect = document.getElementById('dropoff_location');
+                if (car.ALLOWS_DIFFERENT_DROPOFF == 1) {
+                    // Different dropoff allowed - use dropoff_location field
+                    dropoffSelect.disabled = false; // Enable dropdown
+                    if (car.DROPOFF_LOCATION) {
+                        const dropoffLocations = car.DROPOFF_LOCATION.split(',').map(loc => loc.trim()).filter(loc => loc);
+                        dropoffLocations.forEach(loc => {
+                            const option = document.createElement('option');
+                            option.value = loc;
+                            option.textContent = loc;
+                            dropoffSelect.appendChild(option);
+                        });
+                        // Set default to first location
+                        if (dropoffLocations.length > 0) {
+                            dropoffSelect.value = dropoffLocations[0];
+                        }
+                    }
+                } else {
+                    // Same dropoff required - use pickup locations
+                    if (car.PICKUP_LOCATION) {
+                        const pickupLocations = car.PICKUP_LOCATION.split(',').map(loc => loc.trim()).filter(loc => loc);
+                        pickupLocations.forEach(loc => {
+                            const option = document.createElement('option');
+                            option.value = loc;
+                            option.textContent = loc;
+                            dropoffSelect.appendChild(option);
+                        });
+                        // Set default to first location
+                        if (pickupLocations.length > 0) {
+                            dropoffSelect.value = pickupLocations[0];
+                        }
+                    }
+                    // Disable the dropdown when same dropoff is required
+                    dropoffSelect.disabled = true;
+                }
+                
+                // Update dropoff when pickup changes (if same dropoff required)
+                if (car.ALLOWS_DIFFERENT_DROPOFF == 0) {
+                    pickupSelect.addEventListener('change', function() {
+                        dropoffSelect.value = this.value;
+                    });
+                }
+                
+                // Update price when dates change
+                document.getElementById('pickup_date').addEventListener('change', calculatePrice);
+                document.getElementById('dropoff_date').addEventListener('change', calculatePrice);
+                
+                function calculatePrice() {
+                    const pickup = document.getElementById('pickup_date').value;
+                    const dropoff = document.getElementById('dropoff_date').value;
+                    
+                    if (pickup && dropoff) {
+                        const pickupDate = new Date(pickup);
+                        const dropoffDate = new Date(dropoff);
+                        
+                        if (dropoffDate < pickupDate) {
+                            alert('Drop-off date must be after pickup date');
+                            document.getElementById('dropoff_date').value = '';
+                            return;
+                        }
+                        
+                        const days = Math.ceil((dropoffDate - pickupDate) / (1000 * 60 * 60 * 24)) + 1;
+                        const rate = parseFloat(car.RATE);
+                        const total = rate * days;
+                        
+                        document.getElementById('daily-rate').textContent = `RM ${rate.toFixed(2)}`;
+                        document.getElementById('num-days').textContent = days;
+                        document.getElementById('total-price').textContent = `RM ${total.toFixed(2)}`;
+                        document.getElementById('price-summary').style.display = 'block';
+                    }
+                }
+            }
+        })
+        .catch(err => {
+            document.getElementById('car-details').innerHTML = '<p class="error">Failed to load car details.</p>';
+        });
+    
+    // Handle form submission
+    document.getElementById('bookingForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const formData = {
+            car_id: parseInt(carId),
+            pickup_date: document.getElementById('pickup_date').value,
+            dropoff_date: document.getElementById('dropoff_date').value,
+            pickup_location: document.getElementById('pickup_location').value,
+            dropoff_location: document.getElementById('dropoff_location').value
+        };
+        
+        const messageDiv = document.getElementById('message');
+        messageDiv.className = 'message';
+        messageDiv.textContent = 'Processing booking...';
+        
+        try {
+            const response = await fetch('/api/bookings', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(formData)
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                messageDiv.className = 'message success';
+                messageDiv.textContent = data.message;
+                
+                // Redirect to payment
+                setTimeout(() => {
+                    window.location.href = `/my-bookings?booking_id=${data.booking_id}`;
+                }, 1500);
+            } else {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = data.message;
+            }
+        } catch (error) {
+            messageDiv.className = 'message error';
+            messageDiv.textContent = 'An error occurred. Please try again.';
+        }
+    });
+</script>
+{% endblock %}
+

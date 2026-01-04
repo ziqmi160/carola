@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}My Bookings - Carola Car Rental{% endblock %}
+
+{% block content %}
+<div class="bookings-page">
+    <div class="container">
+        <h1 class="page-title">My Bookings</h1>
+        
+        <div id="bookings-container">
+            <div class="loading">Loading bookings...</div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function loadBookings() {
+        fetch('/api/my-bookings')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('bookings-container');
+                
+                if (data.success) {
+                    const bookings = data.bookings;
+                    
+                    if (bookings.length === 0) {
+                        container.innerHTML = '<p class="no-results">You have no bookings yet. <a href="/cars">Browse cars</a> to make a booking.</p>';
+                        return;
+                    }
+                    
+                    container.innerHTML = bookings.map(booking => {
+                        const pickupDate = new Date(booking.PICKUP_DATE);
+                        const dropoffDate = new Date(booking.DROPOFF_DATE);
+                        const isPast = dropoffDate < new Date();
+                        const isPaid = booking.PAYMENT_STATUS === 'Paid';
+                        
+                        return `
+                            <div class="booking-card ${isPast ? 'past' : ''}">
+                                <div class="booking-header">
+                                    <h3>${booking.BRAND_NAME} ${booking.MODEL_NAME}</h3>
+                                    <span class="booking-status ${isPaid ? 'paid' : 'pending'}">${booking.PAYMENT_STATUS}</span>
+                                </div>
+                                <div class="booking-details">
+                                    <div class="detail-item">
+                                        <i class="fas fa-calendar-alt"></i>
+                                        <div>
+                                            <strong>Pickup:</strong> ${pickupDate.toLocaleDateString()}
+                                            <br>
+                                            <strong>Drop-off:</strong> ${dropoffDate.toLocaleDateString()}
+                                        </div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <i class="fas fa-map-marker-alt"></i>
+                                        <div>
+                                            <strong>Pickup:</strong> ${booking.PICKUP_LOCATION || 'N/A'}
+                                            <br>
+                                            <strong>Drop-off:</strong> ${booking.DROPOFF_LOCATION || 'N/A'}
+                                        </div>
+                                    </div>
+                                    <div class="detail-item">
+                                        <i class="fas fa-dollar-sign"></i>
+                                        <div>
+                                            <strong>Total Price:</strong> RM ${parseFloat(booking.PRICE).toFixed(2)}
+                                        </div>
+                                    </div>
+                                </div>
+                                ${!isPaid ? `
+                                    <div class="booking-actions">
+                                        <button class="btn btn-primary" onclick="processPayment(${booking.BOOKING_ID}, ${booking.PRICE})">
+                                            Pay Now
+                                        </button>
+                                    </div>
+                                ` : ''}
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    container.innerHTML = `<p class="error">${data.message}</p>`;
+                }
+            })
+            .catch(err => {
+                document.getElementById('bookings-container').innerHTML = '<p class="error">Failed to load bookings. Please try again later.</p>';
+            });
+    }
+    
+    function processPayment(bookingId, amount) {
+        if (!confirm(`Confirm payment of RM ${parseFloat(amount).toFixed(2)}?`)) {
+            return;
+        }
+        
+        fetch('/api/payment', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({booking_id: bookingId})
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert('Payment processed successfully!');
+                loadBookings();
+            } else {
+                alert('Payment failed: ' + data.message);
+            }
+        })
+        .catch(err => {
+            alert('An error occurred. Please try again.');
+        });
+    }
+    
+    // Check for booking_id in URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const bookingId = urlParams.get('booking_id');
+    
+    // Load bookings
+    loadBookings();
+    
+    // Scroll to booking if specified
+    if (bookingId) {
+        setTimeout(() => {
+            const bookingCard = document.querySelector(`[data-booking-id="${bookingId}"]`);
+            if (bookingCard) {
+                bookingCard.scrollIntoView({behavior: 'smooth'});
+            }
+        }, 500);
+    }
+</script>
+{% endblock %}
+
