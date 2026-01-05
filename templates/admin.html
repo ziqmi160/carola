@@ -608,9 +608,13 @@
                                                 <td>${booking.DROPOFF_LOCATION || 'N/A'}</td>
                                                 <td>RM ${parseFloat(booking.PRICE).toFixed(2)}</td>
                                                 <td>
-                                                    <span class="status-badge ${isPaid ? 'paid' : 'pending'}">
-                                                        ${booking.PAYMENT_STATUS}
-                                                    </span>
+                                                    <select class="payment-status-select" 
+                                                            data-booking-id="${booking.BOOKING_ID}"
+                                                            onchange="updatePaymentStatus(${booking.BOOKING_ID}, this.value)"
+                                                            style="padding: 0.5rem; border-radius: 0.5rem; border: 1px solid var(--border-color); font-size: 0.9rem; cursor: pointer;">
+                                                        <option value="Pending" ${!isPaid ? 'selected' : ''}>Pending</option>
+                                                        <option value="Paid" ${isPaid ? 'selected' : ''}>Paid</option>
+                                                    </select>
                                                 </td>
                                             </tr>
                                         `;
@@ -627,11 +631,24 @@
     
     // Load brands and models
     function loadBrandsAndModels() {
-        fetch('/api/filters')
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
+        Promise.all([
+            fetch('/api/filters').then(res => res.json()),
+            fetch('/api/admin/models').then(res => res.json())
+        ])
+            .then(([brandsData, modelsData]) => {
+                if (brandsData.success && modelsData.success) {
                     const container = document.getElementById('brands-container');
+                    
+                    // Group models by brand
+                    const modelsByBrand = {};
+                    modelsData.models.forEach(model => {
+                        const brandId = model.BRAND_ID;
+                        if (!modelsByBrand[brandId]) {
+                            modelsByBrand[brandId] = [];
+                        }
+                        modelsByBrand[brandId].push(model);
+                    });
+                    
                     container.innerHTML = `
                         <div class="brands-section">
                             <h3>Brands</h3>
@@ -644,7 +661,7 @@
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        ${data.brands.map(brand => `
+                                        ${brandsData.brands.map(brand => `
                                             <tr>
                                                 <td>#${brand.BRAND_ID}</td>
                                                 <td>${brand.BRAND_NAME}</td>
@@ -654,8 +671,36 @@
                                 </table>
                             </div>
                         </div>
+                        <div class="models-section" style="margin-top: 2rem;">
+                            <h3>Models</h3>
+                            <div class="admin-table-container">
+                                <table class="admin-table">
+                                    <thead>
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Model Name</th>
+                                            <th>Brand</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${modelsData.models.map(model => `
+                                            <tr>
+                                                <td>#${model.MODEL_ID}</td>
+                                                <td>${model.MODEL_NAME}</td>
+                                                <td>${model.BRAND_NAME}</td>
+                                            </tr>
+                                        `).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     `;
+                } else {
+                    document.getElementById('brands-container').innerHTML = '<p class="error">Failed to load data.</p>';
                 }
+            })
+            .catch(err => {
+                document.getElementById('brands-container').innerHTML = '<p class="error">Failed to load brands and models.</p>';
             });
     }
     
@@ -729,6 +774,38 @@
                 modal.style.display = 'none';
             }
         });
+    }
+    
+    // Update payment status
+    function updatePaymentStatus(bookingId, status) {
+        if (!confirm(`Are you sure you want to change payment status to "${status}"?`)) {
+            // Reload to reset dropdown
+            loadBookings();
+            return;
+        }
+        
+        fetch('/api/admin/booking/payment-status', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                booking_id: bookingId,
+                payment_status: status
+            })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Payment status updated successfully!');
+                    loadBookings();
+                } else {
+                    alert('Error: ' + data.message);
+                    loadBookings();
+                }
+            })
+            .catch(err => {
+                alert('Error: ' + err.message);
+                loadBookings();
+            });
     }
     
     // Initialize on page load

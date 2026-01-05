@@ -879,9 +879,77 @@ def admin_add_model():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+# Admin: Get all models with brands
+@app.route('/api/admin/models', methods=['GET'])
+def admin_get_all_models():
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        query = """
+            SELECT m.model_id, m.model_name, b.brand_id, b.brand_name
+            FROM Model m
+            JOIN Brand b ON m.brand_id = b.brand_id
+            ORDER BY b.brand_name, m.model_name
+        """
+        models = Database.execute_query(query)
+        return jsonify({'success': True, 'models': models})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# Admin: Update payment status
+@app.route('/api/admin/booking/payment-status', methods=['PUT'])
+def admin_update_payment_status():
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        data = request.json
+        booking_id = data.get('booking_id')
+        payment_status = data.get('payment_status')
+        
+        if not booking_id or not payment_status:
+            return jsonify({'success': False, 'message': 'booking_id and payment_status required'}), 400
+        
+        # Get booking price
+        booking_query = "SELECT price FROM Booking WHERE booking_id = :booking_id"
+        booking_result = Database.execute_query(booking_query, {'booking_id': int(booking_id)})
+        
+        if not booking_result:
+            return jsonify({'success': False, 'message': 'Booking not found'}), 404
+        
+        booking_price = booking_result[0]['PRICE']
+        
+        # Check if payment exists
+        payment_check = Database.execute_query(
+            "SELECT booking_id FROM Payment WHERE booking_id = :booking_id",
+            {'booking_id': int(booking_id)}
+        )
+        
+        if payment_status == 'Paid':
+            # Create payment if it doesn't exist
+            if not payment_check:
+                payment_query = """
+                    INSERT INTO Payment (booking_id, amount, payment_date)
+                    VALUES (:booking_id, :amount, SYSDATE)
+                """
+                Database.execute_query(payment_query, {
+                    'booking_id': int(booking_id),
+                    'amount': float(booking_price)
+                }, fetch=False)
+        else:  # Pending
+            # Delete payment if it exists
+            if payment_check:
+                delete_query = "DELETE FROM Payment WHERE booking_id = :booking_id"
+                Database.execute_query(delete_query, {'booking_id': int(booking_id)}, fetch=False)
+        
+        return jsonify({'success': True, 'message': 'Payment status updated successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 # ==================== STATIC FILES ====================
 
-@app.route('/uploads/<filename>')
+@app.route('/uploads/<path:filename>')
 def uploaded_file(filename):
     return send_from_directory(app.config['UPLOAD_FOLDER'], filename)
 

@@ -637,5 +637,55 @@ JOIN CarType ct ON c.carType_id = ct.carType_id
 WHERE m.model_name = 'Model 3' AND m.brand_id = (SELECT brand_id FROM Brand WHERE brand_name = 'Tesla')
   AND ct.carType_name = 'Luxury' AND c.rate = 380.00;
 
+-- ============================================================================
+-- INSERT SAMPLE BOOKINGS AND PAYMENTS
+-- ============================================================================
+
+-- Note: This assumes you have at least one Customer and one Staff in the database
+-- If not, you'll need to add them first
+
+-- Get first customer and staff IDs (assuming they exist)
+-- Insert sample bookings
+INSERT INTO Booking (cust_id, staff_id, car_id, pickup_date, dropoff_date, pickup_location, dropoff_location, price)
+SELECT 
+    (SELECT MIN(cust_id) FROM Customer) as cust_id,
+    (SELECT MIN(staff_id) FROM Staff) as staff_id,
+    c.car_id,
+    TO_DATE('2026-01-08', 'YYYY-MM-DD') as pickup_date,
+    TO_DATE('2026-01-13', 'YYYY-MM-DD') as dropoff_date,
+    'KL Sentral' as pickup_location,
+    'KL Sentral' as dropoff_location,
+    c.rate * 5 as price
+FROM Car c
+JOIN Model m ON c.model_id = m.model_id
+WHERE m.model_name = 'Axia' AND m.brand_id = (SELECT brand_id FROM Brand WHERE brand_name = 'Perodua')
+  AND c.rate = 70.00
+  AND ROWNUM = 1;
+
+INSERT INTO Booking (cust_id, staff_id, car_id, pickup_date, dropoff_date, pickup_location, dropoff_location, price)
+SELECT 
+    (SELECT MIN(cust_id) FROM Customer) as cust_id,
+    (SELECT MIN(staff_id) FROM Staff) as staff_id,
+    c.car_id,
+    TO_DATE('2026-01-05', 'YYYY-MM-DD') as pickup_date,
+    TO_DATE('2026-01-06', 'YYYY-MM-DD') as dropoff_date,
+    'Subang Airport' as pickup_location,
+    'Subang Airport' as dropoff_location,
+    c.rate * 1 as price
+FROM Car c
+JOIN Model m ON c.model_id = m.model_id
+WHERE m.model_name = 'Myvi' AND m.brand_id = (SELECT brand_id FROM Brand WHERE brand_name = 'Perodua')
+  AND c.rate = 80.00
+  AND ROWNUM = 1;
+
+-- Insert payments for some bookings (making them "Paid")
+INSERT INTO Payment (booking_id, amount, payment_date)
+SELECT booking_id, price, TO_DATE('2026-01-08', 'YYYY-MM-DD')
+FROM Booking
+WHERE pickup_date = TO_DATE('2026-01-08', 'YYYY-MM-DD')
+  AND ROWNUM = 1;
+
+-- The second booking remains unpaid (Pending status)
+
 -- Commit all changes
 COMMIT;

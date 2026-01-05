@@ -1,70 +1,83 @@
 {% extends "base.html" %}
 
-{% block title %}Browse Cars - Carola Car Rental{% endblock %}
+{% block title %}Car Listing - Carola Car Rental{% endblock %}
 
 {% block content %}
-<div class="cars-page">
+<div class="cars-listing-page">
     <div class="container">
-        <h1 class="page-title">Browse Our Fleet</h1>
-        
-        <div class="filters-section">
-            <div class="filters-grid">
-                <div class="filter-group">
-                    <label><i class="fas fa-map-marker-alt"></i> Location</label>
-                    <select id="filter-location">
-                        <option value="">All Locations</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label><i class="fas fa-car"></i> Car Type</label>
-                    <select id="filter-type">
-                        <option value="">All Types</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label><i class="fas fa-tag"></i> Brand</label>
-                    <select id="filter-brand">
-                        <option value="">All Brands</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label><i class="fas fa-gas-pump"></i> Vehicle Type</label>
-                    <select id="filter-fuel">
-                        <option value="">All Types</option>
-                        <option value="Petrol">Petrol</option>
-                        <option value="Diesel">Diesel</option>
-                        <option value="Electric">Electric</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label><i class="fas fa-users"></i> Seats</label>
-                    <select id="filter-seats">
-                        <option value="">All Seats</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label><i class="fas fa-suitcase"></i> Bags</label>
-                    <select id="filter-bags">
-                        <option value="">All Bags</option>
-                    </select>
-                </div>
-                <div class="filter-group">
-                    <label><i class="fas fa-dollar-sign"></i> Price Range</label>
-                    <div class="price-range">
-                        <input type="number" id="min-price" placeholder="Min" min="0">
-                        <span>-</span>
-                        <input type="number" id="max-price" placeholder="Max" min="0">
-                    </div>
-                </div>
-                <div class="filter-group">
-                    <button class="btn btn-primary" onclick="applyFilters()"><i class="fas fa-filter"></i> Apply Filters</button>
-                    <button class="btn btn-secondary" onclick="clearFilters()"><i class="fas fa-times"></i> Clear</button>
-                </div>
-            </div>
+        <div class="listing-header">
+            <h1>Car Listing Style 1</h1>
         </div>
         
-        <div id="cars-container" class="cars-grid">
-            <div class="loading">Loading cars...</div>
+        <div class="listing-layout">
+            <!-- Sidebar Filters -->
+            <aside class="filter-sidebar">
+                <div class="filter-sidebar-content">
+                    <div class="sidebar-header">
+                        <h3>Search</h3>
+                        <h4>Select Car</h4>
+                    </div>
+                    
+                    <div class="filter-widget">
+                        <label>Select Destination</label>
+                        <select id="filter-location">
+                            <option value="">All Locations</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-widget">
+                        <label>Select Type</label>
+                        <select id="filter-type">
+                            <option value="">All Types</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-widget">
+                        <label>Select Brand</label>
+                        <select id="filter-brand">
+                            <option value="">All Brands</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-widget">
+                        <label>Select Fuel</label>
+                        <select id="filter-fuel">
+                            <option value="">All Types</option>
+                            <option value="Petrol">Petrol</option>
+                            <option value="Diesel">Diesel</option>
+                            <option value="Electric">Electric</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-widget">
+                        <label>Filter by Price</label>
+                        <div class="price-range-filter">
+                            <input type="number" id="min-price" placeholder="Min" min="0">
+                            <span>-</span>
+                            <input type="number" id="max-price" placeholder="Max" min="0">
+                        </div>
+                    </div>
+                    
+                    <div class="filter-widget">
+                        <label>Capacity</label>
+                        <div class="capacity-options" id="capacity-options">
+                            <!-- Capacity will be populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="filter-actions">
+                    <button class="btn btn-secondary btn-block" onclick="clearFilters()">Clear</button>
+                    <button class="btn btn-primary btn-block" onclick="applyFilters()">Apply</button>
+                </div>
+            </aside>
+            
+            <!-- Main Content -->
+            <main class="listing-content">
+                <div id="cars-container" class="cars-grid-listing">
+                    <div class="loading">Loading cars...</div>
+                </div>
+            </main>
         </div>
     </div>
 </div>
@@ -82,8 +95,6 @@
                 const locationSelect = document.getElementById('filter-location');
                 const typeSelect = document.getElementById('filter-type');
                 const brandSelect = document.getElementById('filter-brand');
-                const seatsSelect = document.getElementById('filter-seats');
-                const bagsSelect = document.getElementById('filter-bags');
                 
                 // Populate locations
                 if (data.locations) {
@@ -111,27 +122,23 @@
                     brandSelect.appendChild(option);
                 });
                 
-                // Populate seats
-                if (data.seats) {
-                    data.seats.forEach(seat => {
-                        const option = document.createElement('option');
-                        option.value = seat.seat;
-                        option.textContent = seat.seat + ' Seats';
-                        seatsSelect.appendChild(option);
-                    });
-                }
-                
-                // Populate bags
-                if (data.bags) {
-                    data.bags.forEach(bag => {
-                        const option = document.createElement('option');
-                        option.value = bag.bag;
-                        option.textContent = bag.bag + ' Bags';
-                        bagsSelect.appendChild(option);
-                    });
-                }
+                // Populate capacity options
+                const capacityContainer = document.getElementById('capacity-options');
+                const capacities = ['0-1', '1-2', '2-3', '3-4', '4-5', '5-6', 'more'];
+                capacityContainer.innerHTML = capacities.map(cap => `
+                    <label class="capacity-option">
+                        <input type="checkbox" value="${cap}" onchange="updateCapacityFilter()">
+                        <span>${cap}</span>
+                    </label>
+                `).join('');
             }
         });
+    
+    function updateCapacityFilter() {
+        const checked = Array.from(document.querySelectorAll('#capacity-options input:checked')).map(cb => cb.value);
+        filters.capacity = checked;
+        loadCars();
+    }
     
     function applyFilters() {
         filters = {
@@ -139,11 +146,16 @@
             type: document.getElementById('filter-type').value,
             brand: document.getElementById('filter-brand').value,
             fuel_type: document.getElementById('filter-fuel').value,
-            seats: document.getElementById('filter-seats').value,
-            bags: document.getElementById('filter-bags').value,
             min_price: document.getElementById('min-price').value,
             max_price: document.getElementById('max-price').value
         };
+        
+        // Add capacity filter if checked
+        const checkedCapacity = Array.from(document.querySelectorAll('#capacity-options input:checked')).map(cb => cb.value);
+        if (checkedCapacity.length > 0) {
+            filters.capacity = checkedCapacity;
+        }
+        
         loadCars();
     }
     
@@ -152,10 +164,9 @@
         document.getElementById('filter-type').value = '';
         document.getElementById('filter-brand').value = '';
         document.getElementById('filter-fuel').value = '';
-        document.getElementById('filter-seats').value = '';
-        document.getElementById('filter-bags').value = '';
         document.getElementById('min-price').value = '';
         document.getElementById('max-price').value = '';
+        document.querySelectorAll('#capacity-options input').forEach(cb => cb.checked = false);
         filters = {};
         loadCars();
     }
@@ -166,14 +177,28 @@
         
         const params = new URLSearchParams();
         Object.keys(filters).forEach(key => {
-            if (filters[key]) params.append(key, filters[key]);
+            if (filters[key] && key !== 'capacity') {
+                params.append(key, filters[key]);
+            }
         });
         
         fetch(`/api/cars?${params.toString()}`)
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    const cars = data.cars;
+                    let cars = data.cars;
+                    
+                    // Filter by capacity if set
+                    if (filters.capacity && filters.capacity.length > 0) {
+                        cars = cars.filter(car => {
+                            const total = (car.SEAT || 0) + (car.SUITCASE || 0);
+                            return filters.capacity.some(cap => {
+                                if (cap === 'more') return total > 6;
+                                const [min, max] = cap.split('-').map(Number);
+                                return total >= min && total <= max;
+                            });
+                        });
+                    }
                     
                     if (cars.length === 0) {
                         container.innerHTML = '<p class="no-results">No cars found matching your criteria.</p>';
@@ -181,27 +206,26 @@
                     }
                     
                     container.innerHTML = cars.map(car => `
-                        <div class="car-card">
+                        <div class="car-card-listing">
                             <div class="car-image">
-                                <img src="${car.ATTACHMENTS ? '/uploads/' + car.ATTACHMENTS : 'https://via.placeholder.com/300x200?text=' + encodeURIComponent(car.BRAND_NAME + ' ' + car.MODEL_NAME)}" 
+                                <img src="${car.ATTACHMENTS ? '/uploads/' + car.ATTACHMENTS : 'https://via.placeholder.com/400x250?text=' + encodeURIComponent(car.BRAND_NAME + ' ' + car.MODEL_NAME)}" 
                                      alt="${car.BRAND_NAME} ${car.MODEL_NAME}" 
-                                     onerror="this.src='https://via.placeholder.com/300x200?text=Car+Image'">
+                                     onerror="this.src='https://via.placeholder.com/400x250?text=Car+Image'">
+                                <div class="car-badge">RM ${parseFloat(car.RATE).toFixed(0)}/ Day</div>
+                                <div class="car-rating">
+                                    <i class="fas fa-star"></i>
+                                    <span>4.8</span>
+                                </div>
                             </div>
                             <div class="car-info">
-                                <h3>${car.BRAND_NAME} ${car.MODEL_NAME}</h3>
-                                <p class="car-type">${car.CARTYPE_NAME} • ${car.FUEL_TYPE || 'N/A'}</p>
-                                <p class="car-description">${car.DESCRIPTION || ''}</p>
-                                <div class="car-details">
-                                    <span><i class="fas fa-door-open"></i> ${car.DOOR} Doors</span>
-                                    <span><i class="fas fa-users"></i> ${car.SEAT} Seats</span>
-                                    <span><i class="fas fa-suitcase"></i> ${car.SUITCASE} Bags</span>
-                                    <span><i class="fas fa-palette"></i> ${car.COLOUR}</span>
-                                    <span><i class="fas fa-map-marker-alt"></i> ${car.AVAILABLE_LOCATIONS ? car.AVAILABLE_LOCATIONS.split(',')[0] : 'N/A'}</span>
-                                </div>
-                                <div class="car-footer">
-                                    <span class="car-price">RM ${parseFloat(car.RATE).toFixed(2)}/day</span>
-                                    <a href="/book/${car.CAR_ID}" class="btn btn-primary">Book Now</a>
-                                </div>
+                                <h5>${car.BRAND_NAME} ${car.MODEL_NAME}</h5>
+                                <p class="car-description">${car.DESCRIPTION || 'Comfortable and reliable vehicle perfect for your journey'}</p>
+                                <ul class="car-specs-list">
+                                    <li><strong>Doors:</strong> ${car.DOOR || 4} Doors</li>
+                                    <li><strong>Suitcase:</strong> ${car.SUITCASE || 0} Bags</li>
+                                    <li><strong>Passengers:</strong> ${car.SEAT || 5} Passengers</li>
+                                </ul>
+                                <a href="/book/${car.CAR_ID}" class="btn btn-primary btn-block">Rent now</a>
                             </div>
                         </div>
                     `).join('');
@@ -219,4 +243,3 @@
     loadCars();
 </script>
 {% endblock %}
-

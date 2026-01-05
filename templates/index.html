@@ -3,47 +3,94 @@
 {% block title %}Home - Carola Car Rental{% endblock %}
 
 {% block content %}
+<!-- Hero Section with Search -->
 <div class="hero-section">
-    <div class="hero-content">
-        <h1>Find Your Perfect Ride</h1>
-        <p>Explore our wide selection of cars for rent across Malaysia</p>
-        <a href="{{ url_for('cars') }}" class="btn btn-primary btn-large">Browse Cars</a>
-    </div>
-</div>
-
-<div class="features-section">
+    <div class="hero-overlay"></div>
     <div class="container">
-        <h2 class="section-title">Why Choose Carola?</h2>
-        <div class="features-grid">
-            <div class="feature-card">
-                <i class="fas fa-shield-alt"></i>
-                <h3>Safe & Reliable</h3>
-                <p>All our vehicles are regularly maintained and insured</p>
-            </div>
-            <div class="feature-card">
-                <i class="fas fa-dollar-sign"></i>
-                <h3>Best Prices</h3>
-                <p>Competitive rates with no hidden charges</p>
-            </div>
-            <div class="feature-card">
-                <i class="fas fa-map-marker-alt"></i>
-                <h3>Multiple Locations</h3>
-                <p>Pick up and drop off at convenient locations</p>
-            </div>
-            <div class="feature-card">
-                <i class="fas fa-headset"></i>
-                <h3>24/7 Support</h3>
-                <p>Round-the-clock customer service assistance</p>
-            </div>
+        <div class="hero-content">
+            <span class="hero-subtitle">Car Rental</span>
+            <h1>Find Affordable Dream Cars for Rental</h1>
+            <p class="hero-description">Fulfill your automotive fantasies without breaking the bank. Check our affordable car rentals for an opulent yet economical ride.</p>
+            <a href="{{ url_for('cars') }}" class="btn btn-primary btn-large">Get in Touch</a>
         </div>
     </div>
 </div>
 
+<!-- Brands Section -->
+<div class="brands-section">
+    <div class="container">
+        <div class="section-header">
+            <span class="section-subtitle">Brands</span>
+            <h2 class="section-title">Explore Premium Car Brands</h2>
+        </div>
+        <div id="brands-grid" class="brands-grid">
+            <!-- Brands will be loaded here -->
+        </div>
+    </div>
+</div>
+
+<!-- Popular Cars Section -->
 <div class="popular-cars-section">
     <div class="container">
-        <h2 class="section-title">Popular Cars</h2>
+        <div class="section-header">
+            <span class="section-subtitle">Popular Cars</span>
+            <h2 class="section-title">Most Popular Cars</h2>
+        </div>
         <div id="popular-cars" class="cars-grid">
             <!-- Cars will be loaded here -->
+        </div>
+    </div>
+</div>
+
+<!-- Car Types Section -->
+<div class="car-types-section">
+    <div class="container">
+        <div class="section-header">
+            <span class="section-subtitle">Car Types</span>
+            <h2 class="section-title">Explore Car Types</h2>
+        </div>
+        <div id="car-types-grid" class="car-types-grid">
+            <!-- Car types will be loaded here -->
+        </div>
+    </div>
+</div>
+
+<!-- Features Section -->
+<div class="features-section">
+    <div class="container">
+        <div class="section-header">
+            <span class="section-subtitle">We are the best</span>
+            <h2 class="section-title">Explore the world with your own way of driving</h2>
+        </div>
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-car-side"></i>
+                </div>
+                <h3>Free Pick Up & Drop</h3>
+                <p>Your convenience matter. Complimentary pick-up and drop-off service for any your vehicle, a stress-free experience.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-tools"></i>
+                </div>
+                <h3>24/7 Road Assistant</h3>
+                <p>No matter the time or place, and our 24/7 roadside assistance ensures you're never stranded. Drive confidently with support.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-shield-alt"></i>
+                </div>
+                <h3>Safe & Secure</h3>
+                <p>All our vehicles are regularly maintained, insured, and checked for your safety and peace of mind.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">
+                    <i class="fas fa-dollar-sign"></i>
+                </div>
+                <h3>Best Prices</h3>
+                <p>Competitive rates with no hidden charges. Get the best value for your money with transparent pricing.</p>
+            </div>
         </div>
     </div>
 </div>
@@ -51,8 +98,39 @@
 
 {% block scripts %}
 <script>
-    // Load popular cars on page load
-    fetch('/api/cars?limit=6')
+    // Brand logo mapping
+    const brandLogos = {
+        'Toyota': 'toyota-logo.png',
+        'Honda': 'honda-logo.png',
+        'Perodua': 'perodua-logo.png',
+        'Proton': 'proton-logo.png',
+        'BMW': 'bmw-logo.png',
+        'Mercedes-Benz': 'mercedes-logo.png',
+        'Tesla': 'tesla-logo.png'
+    };
+    
+    // Load brands
+    fetch('/api/filters')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.brands) {
+                const container = document.getElementById('brands-grid');
+                const brands = data.brands.slice(0, 8); // Show first 8 brands
+                container.innerHTML = brands.map(brand => {
+                    const logoFile = brandLogos[brand.BRAND_NAME] || null;
+                    const logoPath = logoFile ? `/uploads/brands/${logoFile}` : null;
+                    return `
+                        <div class="brand-item">
+                            ${logoPath ? `<img src="${logoPath}" alt="${brand.BRAND_NAME} Logo" class="brand-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                            <h4 style="display: none;">${brand.BRAND_NAME}</h4>` : `<h4>${brand.BRAND_NAME}</h4>`}
+                        </div>
+                    `;
+                }).join('');
+            }
+        });
+
+    // Load popular cars
+    fetch('/api/cars')
         .then(res => res.json())
         .then(data => {
             if (data.success) {
@@ -67,22 +145,24 @@
                 container.innerHTML = cars.map(car => `
                     <div class="car-card">
                         <div class="car-image">
-                            <img src="${car.ATTACHMENTS ? '/uploads/' + car.ATTACHMENTS : 'https://via.placeholder.com/300x200?text=' + encodeURIComponent(car.BRAND_NAME + ' ' + car.MODEL_NAME)}" 
+                            <img src="${car.ATTACHMENTS ? '/uploads/' + car.ATTACHMENTS : 'https://via.placeholder.com/400x250?text=' + encodeURIComponent(car.BRAND_NAME + ' ' + car.MODEL_NAME)}" 
                                  alt="${car.BRAND_NAME} ${car.MODEL_NAME}" 
-                                 onerror="this.src='https://via.placeholder.com/300x200?text=Car+Image'">
+                                 onerror="this.src='https://via.placeholder.com/400x250?text=Car+Image'">
+                            <div class="car-badge">RM ${parseFloat(car.RATE).toFixed(0)}/ Day</div>
+                            <div class="car-rating">
+                                <i class="fas fa-star"></i>
+                                <span>4.8</span>
+                            </div>
                         </div>
                         <div class="car-info">
                             <h3>${car.BRAND_NAME} ${car.MODEL_NAME}</h3>
-                            <p class="car-type">${car.CARTYPE_NAME} • ${car.FUEL_TYPE || 'N/A'}</p>
-                            <div class="car-details">
-                                <span><i class="fas fa-users"></i> ${car.SEAT} Seats</span>
-                                <span><i class="fas fa-suitcase"></i> ${car.SUITCASE} Bags</span>
-                                <span><i class="fas fa-palette"></i> ${car.COLOUR}</span>
+                            <p class="car-description">${car.DESCRIPTION || 'Comfortable and reliable vehicle perfect for your journey'}</p>
+                            <div class="car-specs-list">
+                                <span><i class="fas fa-door-open"></i> ${car.DOOR || 4} Doors</span>
+                                <span><i class="fas fa-suitcase"></i> ${car.SUITCASE || 0} Bags</span>
+                                <span><i class="fas fa-users"></i> ${car.SEAT || 5} Passengers</span>
                             </div>
-                            <div class="car-footer">
-                                <span class="car-price">RM ${parseFloat(car.RATE).toFixed(2)}/day</span>
-                                <a href="/book/${car.CAR_ID}" class="btn btn-primary">Book Now</a>
-                            </div>
+                            <a href="/book/${car.CAR_ID}" class="btn btn-primary btn-block">Rent now</a>
                         </div>
                     </div>
                 `).join('');
@@ -90,8 +170,43 @@
         })
         .catch(err => {
             console.error('Error loading cars:', err);
-            document.getElementById('popular-cars').innerHTML = '<p class="error">Failed to load cars. Please try again later.</p>';
+        });
+
+    // Car type image mapping
+    const carTypeImages = {
+        'Sedan': 'sedan.jpg',
+        'SUV': 'suv.jpg',
+        'Hatchback': 'hatchback.jpg',
+        'MPV': 'mpv.jpg',
+        'Pickup': 'pickup.jpg',
+        'Luxury': 'luxury.jpg'
+    };
+    
+    // Load car types
+    fetch('/api/filters')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success && data.types) {
+                const container = document.getElementById('car-types-grid');
+                container.innerHTML = data.types.map(type => {
+                    const imageFile = carTypeImages[type.CARTYPE_NAME] || null;
+                    const imagePath = imageFile ? `/uploads/car-types/${imageFile}` : null;
+                    return `
+                        <div class="car-type-item">
+                            ${imagePath ? `
+                                <div class="car-type-image-wrapper">
+                                    <img src="${imagePath}" alt="${type.CARTYPE_NAME}" class="car-type-image" 
+                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                    <div class="car-type-label">${type.CARTYPE_NAME}</div>
+                                </div>
+                                <h4 style="display: none;">${type.CARTYPE_NAME}</h4>
+                            ` : `
+                                <h4>${type.CARTYPE_NAME}</h4>
+                            `}
+                        </div>
+                    `;
+                }).join('');
+            }
         });
 </script>
 {% endblock %}
-
