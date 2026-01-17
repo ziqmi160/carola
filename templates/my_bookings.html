@@ -17,10 +17,13 @@
 {% block scripts %}
 <script>
     // Cancel booking function
-    function cancelBooking(bookingId) {
-        if (!confirm('Are you sure you want to cancel this booking? This action cannot be undone.')) {
-            return;
-        }
+    async function cancelBooking(bookingId) {
+        const confirmed = await showConfirm(
+            'Cancel Booking',
+            'Are you sure you want to cancel this booking? This action cannot be undone.',
+            'danger'
+        );
+        if (!confirmed) return;
         
         fetch(`/api/booking/${bookingId}/cancel`, {
             method: 'POST'
@@ -28,14 +31,14 @@
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    alert('Booking cancelled successfully!');
+                    toastSuccess('Booking cancelled successfully!');
                     loadBookings(); // Reload the bookings list
                 } else {
-                    alert('Error: ' + data.message);
+                    toastError(data.message);
                 }
             })
             .catch(err => {
-                alert('Failed to cancel booking. Please try again.');
+                toastError('Failed to cancel booking. Please try again.');
             });
     }
     

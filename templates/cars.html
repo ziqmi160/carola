@@ -92,6 +92,13 @@
     const urlBrand = urlParams.get('brand');
     const urlType = urlParams.get('type');
     
+    // Check if staff tried to book a car
+    if (urlParams.get('staff_booking_error')) {
+        toastError('Staff members cannot book cars. Please logout and login as a customer to make a booking.');
+        // Clean up the URL
+        window.history.replaceState({}, document.title, window.location.pathname);
+    }
+    
     // Load filters
     fetch('/api/filters')
         .then(res => res.json())

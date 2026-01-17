@@ -310,7 +310,7 @@
                         const dropoffDate = new Date(`${dropoffDateVal}T${dropoffTimeVal}`);
                         
                         if (dropoffDate <= pickupDate) {
-                            alert('Drop-off date and time must be after pickup date and time');
+                            toastWarning('Drop-off date and time must be after pickup date and time');
                             document.getElementById('dropoff_date').value = '';
                             document.getElementById('dropoff_time').value = '';
                             document.getElementById('price-summary').style.display = 'none';

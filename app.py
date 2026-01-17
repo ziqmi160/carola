@@ -10,11 +10,77 @@ app = Flask(__name__)
 app.secret_key = 'carola-secret-key-2024'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Session timeout configuration (15 minutes)
+SESSION_TIMEOUT_MINUTES = 15
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=SESSION_TIMEOUT_MINUTES)
+
 # Create upload folder if it doesn't exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+# ==================== SESSION MANAGEMENT ====================
+
+@app.before_request
+def check_session_timeout():
+    """Check and update session activity timestamp"""
+    # Skip for static files, login, register, and public pages
+    exempt_routes = ['static', 'login', 'register', 'index', 'cars', 'get_cars', 'get_car', 'get_filters', 'check_session']
+    if request.endpoint in exempt_routes:
+        return
+    
+    # If user is logged in, check for timeout
+    if 'user_id' in session:
+        last_activity = session.get('last_activity')
+        if last_activity:
+            last_activity_time = datetime.fromisoformat(last_activity)
+            if datetime.now() - last_activity_time > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                # Session expired due to inactivity
+                session.clear()
+                if request.is_json:
+                    return jsonify({'success': False, 'message': 'Session expired', 'session_expired': True}), 401
+                return redirect(url_for('login', next=request.url, expired=1))
+        
+        # Update last activity time
+        session['last_activity'] = datetime.now().isoformat()
+
+@app.route('/api/check-session', methods=['GET'])
+def check_session():
+    """API endpoint to check if session is still valid"""
+    if 'user_id' not in session:
+        return jsonify({'valid': False, 'message': 'Not logged in'})
+    
+    last_activity = session.get('last_activity')
+    if last_activity:
+        last_activity_time = datetime.fromisoformat(last_activity)
+        time_remaining = timedelta(minutes=SESSION_TIMEOUT_MINUTES) - (datetime.now() - last_activity_time)
+        
+        if time_remaining.total_seconds() <= 0:
+            session.clear()
+            return jsonify({'valid': False, 'message': 'Session expired'})
+        
+        # Update activity time on check
+        session['last_activity'] = datetime.now().isoformat()
+        
+        return jsonify({
+            'valid': True,
+            'user_type': session.get('user_type'),
+            'name': session.get('name'),
+            'time_remaining_seconds': int(time_remaining.total_seconds()),
+            'timeout_minutes': SESSION_TIMEOUT_MINUTES
+        })
+    
+    return jsonify({'valid': True, 'user_type': session.get('user_type')})
+
+@app.route('/api/extend-session', methods=['POST'])
+def extend_session():
+    """Extend user session on activity"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Not logged in'}), 401
+    
+    session['last_activity'] = datetime.now().isoformat()
+    return jsonify({'success': True, 'message': 'Session extended'})
 
 # ==================== AUTHENTICATION ROUTES ====================
 
@@ -101,10 +167,12 @@ def login():
             if customer_result:
                 # User is a customer
                 user = customer_result[0]
+                session.permanent = True  # Enable session timeout
                 session['user_id'] = user['CUST_ID']
                 session['username'] = user['CUST_USERNAME']
                 session['name'] = f"{user['CUST_FNAME']} {user['CUST_LNAME']}"
                 session['user_type'] = 'customer'
+                session['last_activity'] = datetime.now().isoformat()
                 return jsonify({'success': True, 'user_type': 'customer', 'message': 'Login successful!'})
             
             # If not found in Customer, try Staff table
@@ -114,11 +182,13 @@ def login():
             if staff_result:
                 # User is staff
                 user = staff_result[0]
+                session.permanent = True  # Enable session timeout
                 session['user_id'] = user['STAFF_ID']
                 session['username'] = user['STAFF_USERNAME']
                 session['name'] = f"{user['STAFF_FNAME']} {user['STAFF_LNAME']}"
                 session['dept'] = user.get('STAFF_DEPT', '')
                 session['user_type'] = 'staff'
+                session['last_activity'] = datetime.now().isoformat()
                 
                 # Check if this staff is a manager (has staff reporting to them)
                 manager_check = Database.execute_query(
@@ -321,9 +391,14 @@ def get_filters():
 
 @app.route('/book/<int:car_id>')
 def book_car(car_id):
-    if 'user_id' not in session or session.get('user_type') != 'customer':
-        # Store the intended destination so user can be redirected after login
+    if 'user_id' not in session:
+        # Not logged in - redirect to login
         return redirect(url_for('login', next=f'/book/{car_id}'))
+    
+    if session.get('user_type') == 'staff':
+        # Staff cannot book cars - redirect to cars page with message
+        return redirect(url_for('cars', staff_booking_error=1))
+    
     return render_template('booking.html', car_id=car_id)
 
 @app.route('/api/bookings', methods=['POST'])
@@ -1042,7 +1117,7 @@ def admin_create_car():
         # Insert fuel type specific data
         if fuel_type == 'Petrol':
             octane_rating = request.form.get('octane_rating')
-            fuel_tank = request.form.get('fuel_tank_capacity')
+            fuel_tank = request.form.get('petrol_tank_capacity')
             if octane_rating or fuel_tank:
                 petrol_query = """
                     INSERT INTO Petrol (car_id, octane_rating, fuel_tank_capacity)
@@ -1056,7 +1131,7 @@ def admin_create_car():
         
         elif fuel_type == 'Diesel':
             diesel_emission = request.form.get('diesel_emission')
-            fuel_tank = request.form.get('fuel_tank_capacity')
+            fuel_tank = request.form.get('diesel_tank_capacity')
             if diesel_emission or fuel_tank:
                 diesel_query = """
                     INSERT INTO Diesel (car_id, diesel_emission, fuel_tank_capacity)
@@ -1173,7 +1248,7 @@ def admin_update_car(car_id):
         # Insert new fuel type specific data
         if fuel_type == 'Petrol':
             octane_rating = request.form.get('octane_rating')
-            fuel_tank = request.form.get('fuel_tank_capacity')
+            fuel_tank = request.form.get('petrol_tank_capacity')
             if octane_rating or fuel_tank:
                 petrol_query = """
                     INSERT INTO Petrol (car_id, octane_rating, fuel_tank_capacity)
@@ -1187,7 +1262,7 @@ def admin_update_car(car_id):
         
         elif fuel_type == 'Diesel':
             diesel_emission = request.form.get('diesel_emission')
-            fuel_tank = request.form.get('fuel_tank_capacity')
+            fuel_tank = request.form.get('diesel_tank_capacity')
             if diesel_emission or fuel_tank:
                 diesel_query = """
                     INSERT INTO Diesel (car_id, diesel_emission, fuel_tank_capacity)

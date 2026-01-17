@@ -490,13 +490,13 @@
         
         // Basic validation
         if (cardNumber.length < 13 || cardNumber.length > 19) {
-            alert('Please enter a valid card number');
+            toastWarning('Please enter a valid card number');
             return;
         }
         
         const expiryParts = cardExpiry.split('/');
         if (expiryParts.length !== 2 || expiryParts[0].length !== 2 || expiryParts[1].length !== 2) {
-            alert('Please enter a valid expiry date (MM/YY)');
+            toastWarning('Please enter a valid expiry date (MM/YY)');
             return;
         }
         
@@ -506,17 +506,17 @@
         const expiry = new Date(year, month);
         
         if (month < 1 || month > 12) {
-            alert('Invalid expiry month');
+            toastWarning('Invalid expiry month');
             return;
         }
         
         if (expiry < now) {
-            alert('Card has expired');
+            toastError('Card has expired');
             return;
         }
         
         if (cardCvv.length < 3 || cardCvv.length > 4) {
-            alert('Please enter a valid CVV');
+            toastWarning('Please enter a valid CVV');
             return;
         }
         

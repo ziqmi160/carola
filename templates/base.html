@@ -26,7 +26,7 @@
                     {% endif %}
                     <li class="user-menu">
                         <span><i class="fas fa-user"></i> {{ session.name }}</span>
-                        <a href="{{ url_for('logout') }}" class="btn-logout">Logout</a>
+                        <a href="#" onclick="confirmLogout(event)" class="btn-logout">Logout</a>
                     </li>
                 {% else %}
                     <li><a href="{{ url_for('login') }}" class="btn-login">Login</a></li>
@@ -67,7 +67,683 @@
         </div>
     </footer>
 
+    <!-- Toast Notification Container -->
+    <div id="toast-container"></div>
+    
+    <!-- Toast Notification Styles -->
+    <style>
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 99999;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            pointer-events: none;
+        }
+        
+        .toast {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+            min-width: 320px;
+            max-width: 420px;
+            padding: 16px 20px;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.1);
+            pointer-events: auto;
+            animation: toastSlideIn 0.4s cubic-bezier(0.21, 1.02, 0.73, 1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .toast::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+        }
+        
+        .toast.toast-success {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(5, 150, 105, 0.95));
+            color: white;
+        }
+        .toast.toast-success::before { background: #34d399; }
+        
+        .toast.toast-error {
+            background: linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(220, 38, 38, 0.95));
+            color: white;
+        }
+        .toast.toast-error::before { background: #f87171; }
+        
+        .toast.toast-warning {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.95), rgba(217, 119, 6, 0.95));
+            color: white;
+        }
+        .toast.toast-warning::before { background: #fbbf24; }
+        
+        .toast.toast-info {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.95), rgba(29, 78, 216, 0.95));
+            color: white;
+        }
+        .toast.toast-info::before { background: #60a5fa; }
+        
+        .toast-icon {
+            font-size: 1.4rem;
+            flex-shrink: 0;
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+        }
+        
+        .toast-content {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .toast-title {
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 4px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+        
+        .toast-message {
+            font-size: 0.875rem;
+            opacity: 0.95;
+            line-height: 1.4;
+            word-wrap: break-word;
+        }
+        
+        .toast-close {
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+        
+        .toast-close:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: scale(1.1);
+        }
+        
+        .toast-progress {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            height: 3px;
+            background: rgba(255, 255, 255, 0.4);
+            border-radius: 0 0 0 12px;
+            animation: toastProgress linear forwards;
+        }
+        
+        @keyframes toastSlideIn {
+            from {
+                transform: translateX(120%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+        
+        @keyframes toastSlideOut {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(120%);
+                opacity: 0;
+            }
+        }
+        
+        @keyframes toastProgress {
+            from { width: 100%; }
+            to { width: 0%; }
+        }
+        
+        .toast.hiding {
+            animation: toastSlideOut 0.3s ease forwards;
+        }
+        
+        /* Mobile responsiveness */
+        @media (max-width: 480px) {
+            #toast-container {
+                left: 10px;
+                right: 10px;
+                top: 10px;
+            }
+            .toast {
+                min-width: auto;
+                max-width: none;
+            }
+        }
+    </style>
+    
+    <!-- Toast Notification Script -->
+    <script>
+        /**
+         * Beautiful Toast Notification System
+         * Usage: showToast('Your message', 'success|error|warning|info', duration)
+         */
+        (function() {
+            const icons = {
+                success: '<i class="fas fa-check"></i>',
+                error: '<i class="fas fa-times"></i>',
+                warning: '<i class="fas fa-exclamation"></i>',
+                info: '<i class="fas fa-info"></i>'
+            };
+            
+            const titles = {
+                success: 'Success',
+                error: 'Error',
+                warning: 'Warning',
+                info: 'Info'
+            };
+            
+            window.showToast = function(message, type = 'info', duration = 4000) {
+                const container = document.getElementById('toast-container');
+                if (!container) return;
+                
+                const toast = document.createElement('div');
+                toast.className = `toast toast-${type}`;
+                
+                toast.innerHTML = `
+                    <div class="toast-icon">${icons[type] || icons.info}</div>
+                    <div class="toast-content">
+                        <div class="toast-title">${titles[type] || titles.info}</div>
+                        <div class="toast-message">${message}</div>
+                    </div>
+                    <button class="toast-close" onclick="closeToast(this)">
+                        <i class="fas fa-times"></i>
+                    </button>
+                    <div class="toast-progress" style="animation-duration: ${duration}ms;"></div>
+                `;
+                
+                container.appendChild(toast);
+                
+                // Auto remove after duration
+                const timeout = setTimeout(() => {
+                    removeToast(toast);
+                }, duration);
+                
+                // Store timeout reference for manual close
+                toast.dataset.timeout = timeout;
+                
+                // Play subtle sound for certain types (optional)
+                // playNotificationSound(type);
+                
+                return toast;
+            };
+            
+            window.closeToast = function(button) {
+                const toast = button.closest('.toast');
+                if (toast) {
+                    clearTimeout(parseInt(toast.dataset.timeout));
+                    removeToast(toast);
+                }
+            };
+            
+            function removeToast(toast) {
+                if (!toast || toast.classList.contains('hiding')) return;
+                
+                toast.classList.add('hiding');
+                setTimeout(() => {
+                    if (toast.parentNode) {
+                        toast.parentNode.removeChild(toast);
+                    }
+                }, 300);
+            }
+            
+            // Convenience methods
+            window.toastSuccess = (msg, duration) => showToast(msg, 'success', duration);
+            window.toastError = (msg, duration) => showToast(msg, 'error', duration || 5000);
+            window.toastWarning = (msg, duration) => showToast(msg, 'warning', duration);
+            window.toastInfo = (msg, duration) => showToast(msg, 'info', duration);
+        })();
+        
+        /**
+         * Beautiful Confirmation Dialog
+         * Usage: showConfirm('Title', 'Message', 'danger|warning|info').then(result => { if(result) {...} })
+         */
+        (function() {
+            window.showConfirm = function(title, message, type = 'warning') {
+                return new Promise((resolve) => {
+                    // Remove existing confirm dialog if any
+                    const existingDialog = document.getElementById('confirm-dialog');
+                    if (existingDialog) existingDialog.remove();
+                    
+                    const colors = {
+                        danger: { bg: 'linear-gradient(135deg, #ef4444, #dc2626)', icon: 'fas fa-trash-alt' },
+                        warning: { bg: 'linear-gradient(135deg, #f59e0b, #d97706)', icon: 'fas fa-exclamation-triangle' },
+                        info: { bg: 'linear-gradient(135deg, #3b82f6, #1d4ed8)', icon: 'fas fa-question-circle' },
+                        logout: { bg: 'linear-gradient(135deg, #ef4444, #dc2626)', icon: 'fas fa-sign-out-alt' }
+                    };
+                    
+                    const color = colors[type] || colors.warning;
+                    
+                    const dialog = document.createElement('div');
+                    dialog.id = 'confirm-dialog';
+                    dialog.className = 'confirm-overlay';
+                    dialog.innerHTML = `
+                        <div class="confirm-dialog">
+                            <div class="confirm-icon" style="background: ${color.bg}">
+                                <i class="${color.icon}"></i>
+                            </div>
+                            <h3 class="confirm-title">${title}</h3>
+                            <p class="confirm-message">${message}</p>
+                            <div class="confirm-buttons">
+                                <button class="confirm-btn confirm-btn-cancel">
+                                    <i class="fas fa-times"></i> Cancel
+                                </button>
+                                <button class="confirm-btn confirm-btn-confirm" style="background: ${color.bg}">
+                                    <i class="fas fa-check"></i> Confirm
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    
+                    document.body.appendChild(dialog);
+                    
+                    // Animate in
+                    requestAnimationFrame(() => dialog.classList.add('show'));
+                    
+                    const cleanup = (result) => {
+                        dialog.classList.remove('show');
+                        setTimeout(() => dialog.remove(), 300);
+                        resolve(result);
+                    };
+                    
+                    dialog.querySelector('.confirm-btn-cancel').onclick = () => cleanup(false);
+                    dialog.querySelector('.confirm-btn-confirm').onclick = () => cleanup(true);
+                    dialog.onclick = (e) => { if (e.target === dialog) cleanup(false); };
+                    
+                    // ESC key to cancel
+                    const escHandler = (e) => {
+                        if (e.key === 'Escape') {
+                            cleanup(false);
+                            document.removeEventListener('keydown', escHandler);
+                        }
+                    };
+                    document.addEventListener('keydown', escHandler);
+                    
+                    // Focus confirm button
+                    setTimeout(() => dialog.querySelector('.confirm-btn-confirm').focus(), 100);
+                });
+            };
+        })();
+    </script>
+    
+    <!-- Confirmation Dialog Styles -->
+    <style>
+        .confirm-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 99998;
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+        .confirm-overlay.show {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(4px);
+            opacity: 1;
+        }
+        .confirm-dialog {
+            background: var(--card-bg, #fff);
+            border-radius: 16px;
+            padding: 2rem;
+            max-width: 400px;
+            width: 90%;
+            text-align: center;
+            box-shadow: 0 25px 60px rgba(0, 0, 0, 0.3);
+            transform: scale(0.9) translateY(20px);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .confirm-overlay.show .confirm-dialog {
+            transform: scale(1) translateY(0);
+        }
+        .confirm-icon {
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.25rem;
+            font-size: 1.75rem;
+            color: white;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+        }
+        .confirm-title {
+            margin: 0 0 0.75rem;
+            font-size: 1.35rem;
+            font-weight: 600;
+            color: var(--text-primary, #1f2937);
+        }
+        .confirm-message {
+            margin: 0 0 1.5rem;
+            color: var(--text-secondary, #6b7280);
+            line-height: 1.5;
+            font-size: 0.95rem;
+        }
+        .confirm-buttons {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+        }
+        .confirm-btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s;
+            min-width: 120px;
+            justify-content: center;
+        }
+        .confirm-btn-cancel {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        .confirm-btn-cancel:hover {
+            background: #e5e7eb;
+            transform: translateY(-2px);
+        }
+        .confirm-btn-confirm {
+            color: white;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        .confirm-btn-confirm:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+        }
+        @media (max-width: 480px) {
+            .confirm-buttons {
+                flex-direction: column;
+            }
+            .confirm-btn {
+                width: 100%;
+            }
+        }
+    </style>
+    
+    <!-- Logout Confirmation -->
+    <script>
+        async function confirmLogout(event) {
+            event.preventDefault();
+            const confirmed = await showConfirm(
+                'Logout',
+                'Are you sure you want to logout?',
+                'logout'
+            );
+            if (confirmed) {
+                window.location.href = '/logout';
+            }
+        }
+    </script>
+
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    {% if session.user_id %}
+    <!-- Session Timeout Warning Modal -->
+    <div id="session-timeout-modal" class="session-modal" style="display: none;">
+        <div class="session-modal-content">
+            <div class="session-modal-icon">
+                <i class="fas fa-clock"></i>
+            </div>
+            <h3>Session Timeout Warning</h3>
+            <p>Your session will expire in <span id="countdown-timer">60</span> seconds due to inactivity.</p>
+            <p>Click anywhere or press any key to stay logged in.</p>
+            <div class="session-modal-buttons">
+                <button class="btn btn-primary" onclick="extendSession()">
+                    <i class="fas fa-sync-alt"></i> Stay Logged In
+                </button>
+                <button class="btn btn-secondary" onclick="logoutNow()">
+                    <i class="fas fa-sign-out-alt"></i> Logout Now
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <style>
+        .session-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            backdrop-filter: blur(5px);
+        }
+        .session-modal-content {
+            background: var(--card-bg, #fff);
+            padding: 2.5rem;
+            border-radius: 1rem;
+            text-align: center;
+            max-width: 420px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateY(-30px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .session-modal-icon {
+            font-size: 3rem;
+            color: #f59e0b;
+            margin-bottom: 1rem;
+            animation: pulse 1s ease infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+        }
+        .session-modal-content h3 {
+            margin: 0 0 1rem;
+            color: var(--text-primary, #333);
+            font-size: 1.5rem;
+        }
+        .session-modal-content p {
+            color: var(--text-secondary, #666);
+            margin: 0.5rem 0;
+            line-height: 1.5;
+        }
+        #countdown-timer {
+            font-weight: 700;
+            color: #e53e3e;
+            font-size: 1.2em;
+        }
+        .session-modal-buttons {
+            margin-top: 1.5rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .session-modal-buttons .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            border: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.2s;
+        }
+        .session-modal-buttons .btn-primary {
+            background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+            color: white;
+        }
+        .session-modal-buttons .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+        }
+        .session-modal-buttons .btn-secondary {
+            background: #f3f4f6;
+            color: #374151;
+        }
+        .session-modal-buttons .btn-secondary:hover {
+            background: #e5e7eb;
+        }
+    </style>
+    
+    <script>
+        (function() {
+            const SESSION_CHECK_INTERVAL = 60000; // Check every 60 seconds
+            const WARNING_THRESHOLD = 120; // Show warning when 2 minutes remaining
+            const TIMEOUT_MINUTES = 15;
+            
+            let lastActivityTime = Date.now();
+            let warningShown = false;
+            let countdownInterval = null;
+            let sessionCheckInterval = null;
+            
+            // Track user activity
+            const activityEvents = ['mousedown', 'mousemove', 'keydown', 'scroll', 'touchstart', 'click'];
+            
+            function updateActivity() {
+                lastActivityTime = Date.now();
+                if (warningShown) {
+                    hideWarning();
+                    extendSession();
+                }
+            }
+            
+            activityEvents.forEach(event => {
+                document.addEventListener(event, updateActivity, { passive: true });
+            });
+            
+            // Check session status periodically
+            function checkSession() {
+                const inactiveSeconds = (Date.now() - lastActivityTime) / 1000;
+                const remainingSeconds = (TIMEOUT_MINUTES * 60) - inactiveSeconds;
+                
+                // If user has been active recently, extend session on server
+                if (inactiveSeconds < 60) {
+                    fetch('/api/extend-session', { method: 'POST' })
+                        .catch(err => console.log('Session extend failed:', err));
+                }
+                
+                // Show warning if close to timeout
+                if (remainingSeconds <= WARNING_THRESHOLD && remainingSeconds > 0 && !warningShown) {
+                    showWarning(Math.floor(remainingSeconds));
+                }
+                
+                // If already timed out, redirect
+                if (remainingSeconds <= 0) {
+                    redirectToLogin();
+                }
+            }
+            
+            function showWarning(seconds) {
+                warningShown = true;
+                const modal = document.getElementById('session-timeout-modal');
+                const timer = document.getElementById('countdown-timer');
+                
+                if (modal) {
+                    modal.style.display = 'flex';
+                    timer.textContent = seconds;
+                    
+                    // Start countdown
+                    countdownInterval = setInterval(() => {
+                        seconds--;
+                        timer.textContent = seconds;
+                        
+                        if (seconds <= 0) {
+                            clearInterval(countdownInterval);
+                            redirectToLogin();
+                        }
+                    }, 1000);
+                }
+            }
+            
+            function hideWarning() {
+                warningShown = false;
+                const modal = document.getElementById('session-timeout-modal');
+                if (modal) {
+                    modal.style.display = 'none';
+                }
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+            }
+            
+            window.extendSession = function() {
+                hideWarning();
+                lastActivityTime = Date.now();
+                fetch('/api/extend-session', { method: 'POST' })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (!data.success) {
+                            redirectToLogin();
+                        }
+                    })
+                    .catch(() => redirectToLogin());
+            };
+            
+            window.logoutNow = function() {
+                window.location.href = '/logout';
+            };
+            
+            function redirectToLogin() {
+                hideWarning();
+                toastWarning('Your session has expired due to inactivity. Redirecting to login...');
+                setTimeout(() => {
+                    window.location.href = '/login?expired=1&next=' + encodeURIComponent(window.location.pathname);
+                }, 1500);
+            }
+            
+            // Start session checking
+            sessionCheckInterval = setInterval(checkSession, SESSION_CHECK_INTERVAL);
+            
+            // Initial check
+            setTimeout(checkSession, 5000);
+            
+            // Clean up on page unload
+            window.addEventListener('beforeunload', () => {
+                if (sessionCheckInterval) clearInterval(sessionCheckInterval);
+                if (countdownInterval) clearInterval(countdownInterval);
+            });
+        })();
+    </script>
+    {% endif %}
+    
     {% block scripts %}{% endblock %}
 </body>
 </html>
