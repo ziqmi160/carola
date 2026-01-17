@@ -16,6 +16,29 @@
 
 {% block scripts %}
 <script>
+    // Cancel booking function
+    function cancelBooking(bookingId) {
+        if (!confirm('Are you sure you want to cancel this booking? This action cannot be undone.')) {
+            return;
+        }
+        
+        fetch(`/api/booking/${bookingId}/cancel`, {
+            method: 'POST'
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Booking cancelled successfully!');
+                    loadBookings(); // Reload the bookings list
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(err => {
+                alert('Failed to cancel booking. Please try again.');
+            });
+    }
+    
     function loadBookings() {
         fetch('/api/my-bookings')
             .then(res => res.json())
@@ -76,6 +99,11 @@
                                         <a href="/payment/${booking.BOOKING_ID}" class="btn btn-primary">
                                             <i class="fas fa-credit-card"></i> Pay Now - RM ${parseFloat(booking.PRICE).toFixed(2)}
                                         </a>
+                                        ${pickupDate > new Date() ? `
+                                            <button class="btn btn-danger" onclick="cancelBooking(${booking.BOOKING_ID})">
+                                                <i class="fas fa-times"></i> Cancel
+                                            </button>
+                                        ` : ''}
                                     ` : `
                                         <a href="/booking-confirmation/${booking.BOOKING_ID}" class="btn btn-secondary">
                                             <i class="fas fa-receipt"></i> View Confirmation

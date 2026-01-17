@@ -1,0 +1,409 @@
+{% extends "base.html" %}
+
+{% block title %}My Profile - Carola Car Rental{% endblock %}
+
+{% block content %}
+<div class="profile-page">
+    <div class="container">
+        <h1 class="page-title">My Profile</h1>
+        
+        <div class="profile-layout">
+            <!-- Profile Summary Card -->
+            <div class="profile-summary-card">
+                <div class="profile-avatar">
+                    <i class="fas fa-user-circle"></i>
+                </div>
+                <h2 id="profile-name">Loading...</h2>
+                <p id="profile-email" class="profile-email">Loading...</p>
+                
+                <div class="profile-stats">
+                    <div class="stat-item">
+                        <span class="stat-value" id="stat-bookings">0</span>
+                        <span class="stat-label">Total Bookings</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="stat-completed">0</span>
+                        <span class="stat-label">Completed</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-value" id="stat-spent">RM 0</span>
+                        <span class="stat-label">Total Spent</span>
+                    </div>
+                </div>
+                
+                <a href="/my-bookings" class="btn btn-primary btn-block">
+                    <i class="fas fa-list"></i> View My Bookings
+                </a>
+            </div>
+            
+            <!-- Profile Details -->
+            <div class="profile-details">
+                <!-- Edit Profile Section -->
+                <div class="profile-section">
+                    <h3><i class="fas fa-user-edit"></i> Edit Profile</h3>
+                    <form id="profileForm" onsubmit="updateProfile(event)">
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="fname">First Name</label>
+                                <input type="text" id="fname" name="fname" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="lname">Last Name</label>
+                                <input type="text" id="lname" name="lname" required>
+                            </div>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="email">Email</label>
+                                <input type="email" id="email" name="email" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="phone">Phone</label>
+                                <input type="tel" id="phone" name="phone">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="age">Age</label>
+                            <input type="number" id="age" name="age" min="18" max="100">
+                        </div>
+                        <div class="form-group">
+                            <label for="username">Username</label>
+                            <input type="text" id="username" name="username" disabled>
+                            <small>Username cannot be changed</small>
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> Save Changes
+                        </button>
+                    </form>
+                    <div id="profile-message" class="message" style="display: none;"></div>
+                </div>
+                
+                <!-- Change Password Section -->
+                <div class="profile-section">
+                    <h3><i class="fas fa-lock"></i> Change Password</h3>
+                    <form id="passwordForm" onsubmit="changePassword(event)">
+                        <div class="form-group">
+                            <label for="current_password">Current Password</label>
+                            <input type="password" id="current_password" name="current_password" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="new_password">New Password</label>
+                            <input type="password" id="new_password" name="new_password" required minlength="8">
+                            <small>Minimum 8 characters with at least one number</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="confirm_password">Confirm New Password</label>
+                            <input type="password" id="confirm_password" name="confirm_password" required>
+                        </div>
+                        <button type="submit" class="btn btn-secondary">
+                            <i class="fas fa-key"></i> Change Password
+                        </button>
+                    </form>
+                    <div id="password-message" class="message" style="display: none;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.profile-page {
+    padding: 2rem 0;
+    min-height: calc(100vh - 200px);
+}
+
+.profile-layout {
+    display: grid;
+    grid-template-columns: 320px 1fr;
+    gap: 2rem;
+    align-items: start;
+}
+
+.profile-summary-card {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 1rem;
+    box-shadow: var(--shadow);
+    text-align: center;
+}
+
+.profile-avatar {
+    font-size: 5rem;
+    color: var(--primary-color);
+    margin-bottom: 1rem;
+}
+
+.profile-summary-card h2 {
+    margin: 0 0 0.5rem;
+    color: var(--text-primary);
+}
+
+.profile-email {
+    color: var(--text-secondary);
+    margin-bottom: 1.5rem;
+}
+
+.profile-stats {
+    display: flex;
+    justify-content: space-around;
+    padding: 1.5rem 0;
+    border-top: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1.5rem;
+}
+
+.stat-item {
+    text-align: center;
+}
+
+.stat-item .stat-value {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-color);
+}
+
+.stat-item .stat-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.profile-details {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.profile-section {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 1rem;
+    box-shadow: var(--shadow);
+}
+
+.profile-section h3 {
+    margin: 0 0 1.5rem;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.profile-section h3 i {
+    color: var(--primary-color);
+}
+
+.profile-section .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+}
+
+.profile-section .form-group {
+    margin-bottom: 1rem;
+}
+
+.profile-section .form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.profile-section .form-group input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid var(--border-color);
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    transition: border-color 0.3s;
+}
+
+.profile-section .form-group input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.profile-section .form-group input:disabled {
+    background: var(--bg-color);
+    cursor: not-allowed;
+}
+
+.profile-section .form-group small {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+}
+
+.message {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.message.success {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.message.error {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+@media (max-width: 900px) {
+    .profile-layout {
+        grid-template-columns: 1fr;
+    }
+    
+    .profile-section .form-row {
+        grid-template-columns: 1fr;
+    }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Load profile data
+    function loadProfile() {
+        fetch('/api/profile')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const profile = data.profile;
+                    const stats = data.stats;
+                    
+                    // Update summary card
+                    document.getElementById('profile-name').textContent = profile.fname + ' ' + profile.lname;
+                    document.getElementById('profile-email').textContent = profile.email;
+                    
+                    // Update stats
+                    document.getElementById('stat-bookings').textContent = stats.total_bookings;
+                    document.getElementById('stat-completed').textContent = stats.completed_bookings;
+                    document.getElementById('stat-spent').textContent = 'RM ' + stats.total_spent.toFixed(0);
+                    
+                    // Fill form
+                    document.getElementById('fname').value = profile.fname;
+                    document.getElementById('lname').value = profile.lname;
+                    document.getElementById('email').value = profile.email;
+                    document.getElementById('phone').value = profile.phone || '';
+                    document.getElementById('age').value = profile.age || '';
+                    document.getElementById('username').value = profile.username;
+                }
+            })
+            .catch(err => {
+                console.error('Error loading profile:', err);
+            });
+    }
+    
+    // Update profile
+    function updateProfile(event) {
+        event.preventDefault();
+        
+        const data = {
+            fname: document.getElementById('fname').value,
+            lname: document.getElementById('lname').value,
+            email: document.getElementById('email').value,
+            phone: document.getElementById('phone').value,
+            age: document.getElementById('age').value ? parseInt(document.getElementById('age').value) : null
+        };
+        
+        fetch('/api/profile', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+            .then(res => res.json())
+            .then(data => {
+                const messageDiv = document.getElementById('profile-message');
+                messageDiv.style.display = 'block';
+                
+                if (data.success) {
+                    messageDiv.className = 'message success';
+                    messageDiv.textContent = 'Profile updated successfully!';
+                    loadProfile(); // Reload to update summary
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.textContent = data.message;
+                }
+                
+                setTimeout(() => {
+                    messageDiv.style.display = 'none';
+                }, 3000);
+            });
+    }
+    
+    // Password validation
+    function validatePassword(password) {
+        if (password.length < 8) {
+            return { valid: false, message: 'Password must be at least 8 characters long' };
+        }
+        if (!/\d/.test(password)) {
+            return { valid: false, message: 'Password must contain at least one number' };
+        }
+        return { valid: true };
+    }
+    
+    // Change password
+    function changePassword(event) {
+        event.preventDefault();
+        
+        const currentPassword = document.getElementById('current_password').value;
+        const newPassword = document.getElementById('new_password').value;
+        const confirmPassword = document.getElementById('confirm_password').value;
+        const messageDiv = document.getElementById('password-message');
+        
+        // Validate new password
+        const passwordCheck = validatePassword(newPassword);
+        if (!passwordCheck.valid) {
+            messageDiv.style.display = 'block';
+            messageDiv.className = 'message error';
+            messageDiv.textContent = passwordCheck.message;
+            return;
+        }
+        
+        // Check passwords match
+        if (newPassword !== confirmPassword) {
+            messageDiv.style.display = 'block';
+            messageDiv.className = 'message error';
+            messageDiv.textContent = 'New passwords do not match';
+            return;
+        }
+        
+        fetch('/api/profile/password', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                current_password: currentPassword,
+                new_password: newPassword
+            })
+        })
+            .then(res => res.json())
+            .then(data => {
+                messageDiv.style.display = 'block';
+                
+                if (data.success) {
+                    messageDiv.className = 'message success';
+                    messageDiv.textContent = 'Password changed successfully!';
+                    document.getElementById('passwordForm').reset();
+                } else {
+                    messageDiv.className = 'message error';
+                    messageDiv.textContent = data.message;
+                }
+                
+                setTimeout(() => {
+                    messageDiv.style.display = 'none';
+                }, 3000);
+            });
+    }
+    
+    // Load profile on page load
+    loadProfile();
+</script>
+{% endblock %}
+

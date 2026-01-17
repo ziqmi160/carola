@@ -10,7 +10,10 @@
         
         <!-- Tabs -->
         <div class="admin-tabs">
-            <button class="tab-btn active" onclick="switchTab('cars')">
+            <button class="tab-btn active" onclick="switchTab('dashboard')">
+                <i class="fas fa-chart-line"></i> Dashboard
+            </button>
+            <button class="tab-btn" onclick="switchTab('cars')">
                 <i class="fas fa-car"></i> Cars Management
             </button>
             <button class="tab-btn" onclick="switchTab('bookings')">
@@ -24,8 +27,83 @@
             </button>
         </div>
         
+        <!-- Dashboard Tab -->
+        <div id="tab-dashboard" class="tab-content active">
+            <div class="dashboard-stats">
+                <div class="stat-card revenue">
+                    <div class="stat-icon"><i class="fas fa-dollar-sign"></i></div>
+                    <div class="stat-info">
+                        <h3 id="stat-revenue">RM 0.00</h3>
+                        <p>Total Revenue</p>
+                    </div>
+                </div>
+                <div class="stat-card monthly">
+                    <div class="stat-icon"><i class="fas fa-calendar-alt"></i></div>
+                    <div class="stat-info">
+                        <h3 id="stat-monthly">RM 0.00</h3>
+                        <p>This Month</p>
+                    </div>
+                </div>
+                <div class="stat-card bookings">
+                    <div class="stat-icon"><i class="fas fa-clipboard-list"></i></div>
+                    <div class="stat-info">
+                        <h3 id="stat-bookings">0</h3>
+                        <p>Total Bookings</p>
+                    </div>
+                </div>
+                <div class="stat-card customers">
+                    <div class="stat-icon"><i class="fas fa-users"></i></div>
+                    <div class="stat-info">
+                        <h3 id="stat-customers">0</h3>
+                        <p>Customers</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="dashboard-row">
+                <div class="dashboard-card">
+                    <h3><i class="fas fa-chart-bar"></i> Popular Brands</h3>
+                    <div class="chart-container">
+                        <canvas id="brandsChart"></canvas>
+                    </div>
+                </div>
+                <div class="dashboard-card">
+                    <h3><i class="fas fa-chart-line"></i> Revenue Trend</h3>
+                    <div class="chart-container">
+                        <canvas id="revenueChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="dashboard-row">
+                <div class="dashboard-card wide">
+                    <h3><i class="fas fa-clock"></i> Recent Bookings</h3>
+                    <div id="recent-bookings-container">
+                        <div class="loading">Loading...</div>
+                    </div>
+                </div>
+                <div class="dashboard-card">
+                    <h3><i class="fas fa-info-circle"></i> Booking Status</h3>
+                    <div class="booking-status-summary">
+                        <div class="status-item paid">
+                            <span class="status-count" id="stat-paid">0</span>
+                            <span class="status-label">Paid</span>
+                        </div>
+                        <div class="status-item pending">
+                            <span class="status-count" id="stat-pending">0</span>
+                            <span class="status-label">Pending</span>
+                        </div>
+                        <div class="status-item cars">
+                            <span class="status-count" id="stat-cars">0</span>
+                            <span class="status-label">Cars</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- Cars Tab -->
-        <div id="tab-cars" class="tab-content active">
+        <div id="tab-cars" class="tab-content">
             <div class="admin-section-header">
                 <h2>Cars Management</h2>
                 <button class="btn btn-primary" onclick="showAddCarModal()">
@@ -376,7 +454,172 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
+/* Dashboard Styles */
+.dashboard-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: var(--card-bg);
+    padding: 1.5rem;
+    border-radius: 1rem;
+    box-shadow: var(--shadow);
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.stat-card .stat-icon {
+    width: 60px;
+    height: 60px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: white;
+}
+
+.stat-card.revenue .stat-icon { background: linear-gradient(135deg, #10b981, #059669); }
+.stat-card.monthly .stat-icon { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+.stat-card.bookings .stat-icon { background: linear-gradient(135deg, #f59e0b, #d97706); }
+.stat-card.customers .stat-icon { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
+
+.stat-card .stat-info h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--text-primary);
+}
+
+.stat-card .stat-info p {
+    margin: 0.25rem 0 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.dashboard-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.dashboard-card {
+    background: var(--card-bg);
+    padding: 1.5rem;
+    border-radius: 1rem;
+    box-shadow: var(--shadow);
+}
+
+.dashboard-card.wide {
+    grid-column: span 1;
+}
+
+.dashboard-card h3 {
+    margin: 0 0 1rem;
+    font-size: 1.1rem;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.dashboard-card h3 i {
+    color: var(--primary-color);
+}
+
+.chart-container {
+    height: 250px;
+}
+
+.booking-status-summary {
+    display: flex;
+    justify-content: space-around;
+    padding: 1rem 0;
+}
+
+.status-item {
+    text-align: center;
+}
+
+.status-item .status-count {
+    display: block;
+    font-size: 2rem;
+    font-weight: 700;
+}
+
+.status-item .status-label {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.status-item.paid .status-count { color: #10b981; }
+.status-item.pending .status-count { color: #f59e0b; }
+.status-item.cars .status-count { color: #3b82f6; }
+
+.recent-booking-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.recent-booking-item:last-child {
+    border-bottom: none;
+}
+
+.recent-booking-info {
+    flex: 1;
+}
+
+.recent-booking-info strong {
+    display: block;
+    color: var(--text-primary);
+}
+
+.recent-booking-info small {
+    color: var(--text-secondary);
+}
+
+.recent-booking-price {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+.recent-booking-status {
+    padding: 0.25rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-left: 1rem;
+}
+
+.recent-booking-status.paid {
+    background: #d1fae5;
+    color: #059669;
+}
+
+.recent-booking-status.pending {
+    background: #fef3c7;
+    color: #d97706;
+}
+
+@media (max-width: 768px) {
+    .dashboard-row {
+        grid-template-columns: 1fr;
+    }
+    .dashboard-card.wide {
+        grid-column: span 1;
+    }
+}
+
 .admin-filters {
     background: var(--card-bg);
     padding: 1.25rem;
@@ -478,7 +721,9 @@
         event.target.classList.add('active');
         document.getElementById(`tab-${tab}`).classList.add('active');
         
-        if (tab === 'cars') {
+        if (tab === 'dashboard') {
+            loadDashboard();
+        } else if (tab === 'cars') {
             loadCars();
         } else if (tab === 'bookings') {
             loadBookings();
@@ -489,10 +734,112 @@
         }
     }
     
+    // Dashboard charts
+    let brandsChart = null;
+    let revenueChart = null;
+    
+    // Load dashboard stats
+    function loadDashboard() {
+        fetch('/api/admin/stats')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const stats = data.stats;
+                    
+                    // Update stat cards
+                    document.getElementById('stat-revenue').textContent = 'RM ' + stats.total_revenue.toLocaleString('en-MY', {minimumFractionDigits: 2});
+                    document.getElementById('stat-monthly').textContent = 'RM ' + stats.monthly_revenue.toLocaleString('en-MY', {minimumFractionDigits: 2});
+                    document.getElementById('stat-bookings').textContent = stats.total_bookings;
+                    document.getElementById('stat-customers').textContent = stats.total_customers;
+                    document.getElementById('stat-paid').textContent = stats.paid_bookings;
+                    document.getElementById('stat-pending').textContent = stats.pending_bookings;
+                    document.getElementById('stat-cars').textContent = stats.total_cars;
+                    
+                    // Render Popular Brands Chart
+                    const brandsCtx = document.getElementById('brandsChart').getContext('2d');
+                    if (brandsChart) brandsChart.destroy();
+                    brandsChart = new Chart(brandsCtx, {
+                        type: 'bar',
+                        data: {
+                            labels: stats.popular_brands.map(b => b.name),
+                            datasets: [{
+                                label: 'Bookings',
+                                data: stats.popular_brands.map(b => b.count),
+                                backgroundColor: ['#ff6b35', '#f7931e', '#ffc107', '#28a745', '#17a2b8'],
+                                borderRadius: 8
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false }
+                            },
+                            scales: {
+                                y: { beginAtZero: true, ticks: { stepSize: 1 } }
+                            }
+                        }
+                    });
+                    
+                    // Render Revenue Trend Chart
+                    const revenueCtx = document.getElementById('revenueChart').getContext('2d');
+                    if (revenueChart) revenueChart.destroy();
+                    revenueChart = new Chart(revenueCtx, {
+                        type: 'line',
+                        data: {
+                            labels: stats.monthly_trend.map(m => m.month),
+                            datasets: [{
+                                label: 'Revenue (RM)',
+                                data: stats.monthly_trend.map(m => m.revenue),
+                                borderColor: '#ff6b35',
+                                backgroundColor: 'rgba(255, 107, 53, 0.1)',
+                                fill: true,
+                                tension: 0.4,
+                                pointBackgroundColor: '#ff6b35'
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            plugins: {
+                                legend: { display: false }
+                            },
+                            scales: {
+                                y: { beginAtZero: true }
+                            }
+                        }
+                    });
+                    
+                    // Render Recent Bookings
+                    const recentContainer = document.getElementById('recent-bookings-container');
+                    if (stats.recent_bookings.length === 0) {
+                        recentContainer.innerHTML = '<p style="color: var(--text-secondary);">No bookings yet.</p>';
+                    } else {
+                        recentContainer.innerHTML = stats.recent_bookings.map(booking => {
+                            const date = new Date(booking.pickup_date);
+                            return `
+                                <div class="recent-booking-item">
+                                    <div class="recent-booking-info">
+                                        <strong>${booking.car_name}</strong>
+                                        <small>${booking.customer_name} • ${date.toLocaleDateString('en-GB')}</small>
+                                    </div>
+                                    <span class="recent-booking-price">RM ${booking.price.toFixed(2)}</span>
+                                    <span class="recent-booking-status ${booking.status.toLowerCase()}">${booking.status}</span>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                }
+            })
+            .catch(err => {
+                console.error('Error loading dashboard:', err);
+            });
+    }
+    
     // Load initial data
     function initAdmin() {
         loadFilters();
-        loadCars();
+        loadDashboard(); // Load dashboard first
     }
     
     // Load filters data

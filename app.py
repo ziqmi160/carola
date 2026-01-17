@@ -454,11 +454,205 @@ def get_my_bookings():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+# ==================== CUSTOMER PROFILE ====================
+
+@app.route('/profile')
+def profile():
+    if 'user_id' not in session or session.get('user_type') != 'customer':
+        return redirect(url_for('login'))
+    return render_template('profile.html')
+
+@app.route('/api/profile', methods=['GET'])
+def get_profile():
+    """Get customer profile data"""
+    if 'user_id' not in session or session.get('user_type') != 'customer':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        cust_id = session['user_id']
+        
+        # Get customer details
+        profile_query = """
+            SELECT cust_id, cust_fname, cust_lname, cust_age, cust_email, cust_phone, cust_username
+            FROM Customer
+            WHERE cust_id = :cust_id
+        """
+        result = Database.execute_query(profile_query, {'cust_id': cust_id})
+        
+        if not result:
+            return jsonify({'success': False, 'message': 'Profile not found'}), 404
+        
+        profile = result[0]
+        
+        # Get booking statistics
+        stats_query = """
+            SELECT 
+                COUNT(*) as total_bookings,
+                NVL(SUM(b.price), 0) as total_spent,
+                SUM(CASE WHEN p.booking_id IS NOT NULL THEN 1 ELSE 0 END) as completed_bookings
+            FROM Booking b
+            LEFT JOIN Payment p ON b.booking_id = p.booking_id
+            WHERE b.cust_id = :cust_id
+        """
+        stats_result = Database.execute_query(stats_query, {'cust_id': cust_id})
+        
+        stats = {
+            'total_bookings': int(stats_result[0]['TOTAL_BOOKINGS'] or 0),
+            'total_spent': float(stats_result[0]['TOTAL_SPENT'] or 0),
+            'completed_bookings': int(stats_result[0]['COMPLETED_BOOKINGS'] or 0)
+        }
+        
+        return jsonify({
+            'success': True,
+            'profile': {
+                'cust_id': profile['CUST_ID'],
+                'fname': profile['CUST_FNAME'],
+                'lname': profile['CUST_LNAME'],
+                'age': profile['CUST_AGE'],
+                'email': profile['CUST_EMAIL'],
+                'phone': profile['CUST_PHONE'],
+                'username': profile['CUST_USERNAME']
+            },
+            'stats': stats
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/profile', methods=['PUT'])
+def update_profile():
+    """Update customer profile"""
+    if 'user_id' not in session or session.get('user_type') != 'customer':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        data = request.json
+        cust_id = session['user_id']
+        
+        # Check if email already exists (exclude current user)
+        if 'email' in data:
+            email_check = Database.execute_query(
+                "SELECT COUNT(*) as cnt FROM Customer WHERE cust_email = :email AND cust_id != :cust_id",
+                {'email': data['email'], 'cust_id': cust_id}
+            )
+            if email_check and email_check[0]['CNT'] > 0:
+                return jsonify({'success': False, 'message': 'Email already in use'}), 400
+        
+        # Build update query
+        update_fields = []
+        params = {'cust_id': cust_id}
+        
+        if 'fname' in data:
+            update_fields.append('cust_fname = :fname')
+            params['fname'] = data['fname']
+        if 'lname' in data:
+            update_fields.append('cust_lname = :lname')
+            params['lname'] = data['lname']
+        if 'email' in data:
+            update_fields.append('cust_email = :email')
+            params['email'] = data['email']
+        if 'phone' in data:
+            update_fields.append('cust_phone = :phone')
+            params['phone'] = data['phone']
+        if 'age' in data:
+            update_fields.append('cust_age = :age')
+            params['age'] = data['age']
+        
+        if update_fields:
+            query = f"UPDATE Customer SET {', '.join(update_fields)} WHERE cust_id = :cust_id"
+            Database.execute_query(query, params, fetch=False)
+            
+            # Update session name if changed
+            if 'fname' in data or 'lname' in data:
+                new_fname = data.get('fname', session.get('name', '').split()[0])
+                new_lname = data.get('lname', session.get('name', '').split()[-1] if len(session.get('name', '').split()) > 1 else '')
+                session['name'] = f"{new_fname} {new_lname}"
+        
+        return jsonify({'success': True, 'message': 'Profile updated successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/profile/password', methods=['PUT'])
+def change_password():
+    """Change customer password"""
+    if 'user_id' not in session or session.get('user_type') != 'customer':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        data = request.json
+        cust_id = session['user_id']
+        current_password = data.get('current_password')
+        new_password = data.get('new_password')
+        
+        # Verify current password
+        verify_query = "SELECT cust_id FROM Customer WHERE cust_id = :cust_id AND cust_password = :password"
+        result = Database.execute_query(verify_query, {'cust_id': cust_id, 'password': current_password})
+        
+        if not result:
+            return jsonify({'success': False, 'message': 'Current password is incorrect'}), 400
+        
+        # Validate new password
+        is_valid, error_msg = validate_password(new_password)
+        if not is_valid:
+            return jsonify({'success': False, 'message': error_msg}), 400
+        
+        # Update password
+        update_query = "UPDATE Customer SET cust_password = :password WHERE cust_id = :cust_id"
+        Database.execute_query(update_query, {'password': new_password, 'cust_id': cust_id}, fetch=False)
+        
+        return jsonify({'success': True, 'message': 'Password changed successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/my-bookings')
 def my_bookings():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     return render_template('my_bookings.html')
+
+@app.route('/api/booking/<int:booking_id>/cancel', methods=['POST'])
+def cancel_booking(booking_id):
+    """Cancel a booking (only if unpaid and pickup date is in the future)"""
+    if 'user_id' not in session or session.get('user_type') != 'customer':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        cust_id = session['user_id']
+        
+        # Get booking details and verify ownership
+        booking_query = """
+            SELECT b.booking_id, b.pickup_date, 
+                   CASE WHEN p.booking_id IS NOT NULL THEN 'Paid' ELSE 'Pending' END as payment_status
+            FROM Booking b
+            LEFT JOIN Payment p ON b.booking_id = p.booking_id
+            WHERE b.booking_id = :booking_id AND b.cust_id = :cust_id
+        """
+        result = Database.execute_query(booking_query, {
+            'booking_id': booking_id,
+            'cust_id': cust_id
+        })
+        
+        if not result:
+            return jsonify({'success': False, 'message': 'Booking not found'}), 404
+        
+        booking = result[0]
+        
+        # Check if already paid
+        if booking['PAYMENT_STATUS'] == 'Paid':
+            return jsonify({'success': False, 'message': 'Cannot cancel a paid booking. Please contact support.'}), 400
+        
+        # Check if pickup date is in the future
+        pickup_date = booking['PICKUP_DATE']
+        from datetime import datetime
+        if pickup_date <= datetime.now():
+            return jsonify({'success': False, 'message': 'Cannot cancel booking after pickup date has passed'}), 400
+        
+        # Delete the booking
+        delete_query = "DELETE FROM Booking WHERE booking_id = :booking_id"
+        Database.execute_query(delete_query, {'booking_id': booking_id}, fetch=False)
+        
+        return jsonify({'success': True, 'message': 'Booking cancelled successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/booking-confirmation/<int:booking_id>')
 def booking_confirmation(booking_id):
@@ -586,6 +780,112 @@ def admin_dashboard():
     if 'user_id' not in session or session.get('user_type') != 'staff':
         return redirect(url_for('login'))
     return render_template('admin.html')
+
+# Admin: Get dashboard statistics
+@app.route('/api/admin/stats', methods=['GET'])
+def admin_get_stats():
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        stats = {}
+        
+        # Total revenue (sum of all payments)
+        revenue_query = "SELECT NVL(SUM(amount), 0) as total_revenue FROM Payment"
+        revenue_result = Database.execute_query(revenue_query)
+        stats['total_revenue'] = float(revenue_result[0]['TOTAL_REVENUE']) if revenue_result else 0
+        
+        # Revenue this month
+        monthly_revenue_query = """
+            SELECT NVL(SUM(amount), 0) as monthly_revenue 
+            FROM Payment 
+            WHERE EXTRACT(MONTH FROM payment_date) = EXTRACT(MONTH FROM SYSDATE)
+            AND EXTRACT(YEAR FROM payment_date) = EXTRACT(YEAR FROM SYSDATE)
+        """
+        monthly_result = Database.execute_query(monthly_revenue_query)
+        stats['monthly_revenue'] = float(monthly_result[0]['MONTHLY_REVENUE']) if monthly_result else 0
+        
+        # Booking counts
+        booking_counts_query = """
+            SELECT 
+                COUNT(*) as total_bookings,
+                SUM(CASE WHEN p.booking_id IS NOT NULL THEN 1 ELSE 0 END) as paid_bookings,
+                SUM(CASE WHEN p.booking_id IS NULL THEN 1 ELSE 0 END) as pending_bookings
+            FROM Booking b
+            LEFT JOIN Payment p ON b.booking_id = p.booking_id
+        """
+        counts_result = Database.execute_query(booking_counts_query)
+        if counts_result:
+            stats['total_bookings'] = int(counts_result[0]['TOTAL_BOOKINGS'] or 0)
+            stats['paid_bookings'] = int(counts_result[0]['PAID_BOOKINGS'] or 0)
+            stats['pending_bookings'] = int(counts_result[0]['PENDING_BOOKINGS'] or 0)
+        
+        # Total cars
+        cars_query = "SELECT COUNT(*) as total_cars FROM Car"
+        cars_result = Database.execute_query(cars_query)
+        stats['total_cars'] = int(cars_result[0]['TOTAL_CARS']) if cars_result else 0
+        
+        # Total customers
+        customers_query = "SELECT COUNT(*) as total_customers FROM Customer"
+        customers_result = Database.execute_query(customers_query)
+        stats['total_customers'] = int(customers_result[0]['TOTAL_CUSTOMERS']) if customers_result else 0
+        
+        # Popular brands (top 5 by bookings)
+        popular_brands_query = """
+            SELECT br.brand_name, COUNT(b.booking_id) as booking_count
+            FROM Booking b
+            JOIN Car c ON b.car_id = c.car_id
+            JOIN Model m ON c.model_id = m.model_id
+            JOIN Brand br ON m.brand_id = br.brand_id
+            GROUP BY br.brand_name
+            ORDER BY booking_count DESC
+            FETCH FIRST 5 ROWS ONLY
+        """
+        popular_brands = Database.execute_query(popular_brands_query)
+        stats['popular_brands'] = [{'name': b['BRAND_NAME'], 'count': int(b['BOOKING_COUNT'])} for b in popular_brands]
+        
+        # Monthly revenue trend (last 6 months)
+        monthly_trend_query = """
+            SELECT 
+                TO_CHAR(payment_date, 'Mon YYYY') as month_name,
+                TO_CHAR(payment_date, 'YYYY-MM') as month_sort,
+                SUM(amount) as revenue
+            FROM Payment
+            WHERE payment_date >= ADD_MONTHS(TRUNC(SYSDATE, 'MM'), -5)
+            GROUP BY TO_CHAR(payment_date, 'Mon YYYY'), TO_CHAR(payment_date, 'YYYY-MM')
+            ORDER BY month_sort
+        """
+        monthly_trend = Database.execute_query(monthly_trend_query)
+        stats['monthly_trend'] = [{'month': m['MONTH_NAME'], 'revenue': float(m['REVENUE'])} for m in monthly_trend]
+        
+        # Recent bookings (last 5)
+        recent_bookings_query = """
+            SELECT b.booking_id, b.pickup_date, b.price,
+                   cu.cust_fname || ' ' || cu.cust_lname as customer_name,
+                   br.brand_name || ' ' || m.model_name as car_name,
+                   CASE WHEN p.booking_id IS NOT NULL THEN 'Paid' ELSE 'Pending' END as status
+            FROM Booking b
+            JOIN Customer cu ON b.cust_id = cu.cust_id
+            JOIN Car c ON b.car_id = c.car_id
+            JOIN Model m ON c.model_id = m.model_id
+            JOIN Brand br ON m.brand_id = br.brand_id
+            LEFT JOIN Payment p ON b.booking_id = p.booking_id
+            ORDER BY b.booking_id DESC
+            FETCH FIRST 5 ROWS ONLY
+        """
+        recent_bookings = Database.execute_query(recent_bookings_query)
+        stats['recent_bookings'] = [{
+            'booking_id': rb['BOOKING_ID'],
+            'pickup_date': rb['PICKUP_DATE'].isoformat() if rb['PICKUP_DATE'] else None,
+            'price': float(rb['PRICE']),
+            'customer_name': rb['CUSTOMER_NAME'],
+            'car_name': rb['CAR_NAME'],
+            'status': rb['STATUS']
+        } for rb in recent_bookings]
+        
+        return jsonify({'success': True, 'stats': stats})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 # Admin: Get all cars
 @app.route('/api/admin/cars', methods=['GET'])
