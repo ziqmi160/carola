@@ -40,7 +40,7 @@
                 <input type="password" id="password" name="password" required>
             </div>
             <button type="submit" class="btn btn-primary btn-block">Register</button>
-            <p class="auth-link">Already have an account? <a href="{{ url_for('login') }}">Login here</a></p>
+            <p class="auth-link">Already have an account? <a href="{{ url_for('login') }}{% if next_url %}?next={{ next_url }}{% endif %}">Login here</a></p>
         </form>
         <div id="message" class="message"></div>
     </div>
@@ -49,6 +49,9 @@
 
 {% block scripts %}
 <script>
+    // Get the redirect URL from the template
+    const nextUrl = "{{ next_url | default('', true) }}";
+    
     document.getElementById('registerForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const formData = {
@@ -76,9 +79,11 @@
             
             if (data.success) {
                 messageDiv.className = 'message success';
-                messageDiv.textContent = data.message;
+                messageDiv.textContent = data.message + ' Redirecting to login...';
                 setTimeout(() => {
-                    window.location.href = '/login';
+                    // Redirect to login with the next parameter preserved
+                    const loginUrl = nextUrl ? '/login?next=' + encodeURIComponent(nextUrl) : '/login';
+                    window.location.href = loginUrl;
                 }, 1500);
             } else {
                 messageDiv.className = 'message error';

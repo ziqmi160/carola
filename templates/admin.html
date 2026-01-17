@@ -29,6 +29,41 @@
                     <i class="fas fa-plus"></i> Add New Car
                 </button>
             </div>
+            
+            <!-- Search & Filter Section -->
+            <div class="admin-filters">
+                <div class="filter-row">
+                    <div class="search-box">
+                        <i class="fas fa-search"></i>
+                        <input type="text" id="car-search" placeholder="Search by brand, model, colour..." oninput="filterCars()">
+                    </div>
+                    <div class="filter-select">
+                        <select id="filter-brand" onchange="filterCars()">
+                            <option value="">All Brands</option>
+                        </select>
+                    </div>
+                    <div class="filter-select">
+                        <select id="filter-type" onchange="filterCars()">
+                            <option value="">All Types</option>
+                        </select>
+                    </div>
+                    <div class="filter-select">
+                        <select id="filter-fuel" onchange="filterCars()">
+                            <option value="">All Fuel Types</option>
+                            <option value="Petrol">Petrol</option>
+                            <option value="Diesel">Diesel</option>
+                            <option value="Electric">Electric</option>
+                        </select>
+                    </div>
+                    <button class="btn btn-secondary btn-sm" onclick="clearFilters()">
+                        <i class="fas fa-times"></i> Clear
+                    </button>
+                </div>
+                <div class="filter-results">
+                    <span id="cars-count">0 cars found</span>
+                </div>
+            </div>
+            
             <div id="cars-container">
                 <div class="loading">Loading cars...</div>
             </div>
@@ -222,14 +257,15 @@
     </div>
 </div>
 
-<!-- Add Brand Modal -->
+<!-- Add/Edit Brand Modal -->
 <div id="brandModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h2>Add New Brand</h2>
+            <h2 id="brand-modal-title">Add New Brand</h2>
             <span class="close" onclick="closeBrandModal()">&times;</span>
         </div>
         <form onsubmit="saveBrand(event)">
+            <input type="hidden" id="edit_brand_id">
             <div class="form-group">
                 <label>Brand Name <span class="required">*</span></label>
                 <input type="text" id="brand_name" required>
@@ -242,14 +278,15 @@
     </div>
 </div>
 
-<!-- Add Model Modal -->
+<!-- Add/Edit Model Modal -->
 <div id="modelModal" class="modal">
     <div class="modal-content">
         <div class="modal-header">
-            <h2>Add New Model</h2>
+            <h2 id="model-modal-title">Add New Model</h2>
             <span class="close" onclick="closeModelModal()">&times;</span>
         </div>
         <form onsubmit="saveModel(event)">
+            <input type="hidden" id="edit_model_id">
             <div class="form-group">
                 <label>Brand <span class="required">*</span></label>
                 <select id="model_brand" required>
@@ -270,11 +307,99 @@
 {% endblock %}
 
 {% block scripts %}
+<style>
+.admin-filters {
+    background: var(--card-bg);
+    padding: 1.25rem;
+    border-radius: 0.75rem;
+    margin-bottom: 1.5rem;
+    box-shadow: var(--shadow);
+}
+
+.filter-row {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.search-box {
+    flex: 1;
+    min-width: 250px;
+    position: relative;
+}
+
+.search-box i {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-secondary);
+}
+
+.search-box input {
+    width: 100%;
+    padding: 0.75rem 1rem 0.75rem 2.5rem;
+    border: 2px solid var(--border-color);
+    border-radius: 0.5rem;
+    font-size: 0.95rem;
+    transition: border-color 0.3s;
+}
+
+.search-box input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.filter-select select {
+    padding: 0.75rem 2rem 0.75rem 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 0.5rem;
+    font-size: 0.95rem;
+    background: white;
+    cursor: pointer;
+    min-width: 150px;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 9L1 4h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+}
+
+.filter-select select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.filter-results {
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+}
+
+.filter-results span {
+    font-weight: 600;
+    color: var(--primary-color);
+}
+
+@media (max-width: 768px) {
+    .filter-row {
+        flex-direction: column;
+    }
+    .search-box, .filter-select {
+        width: 100%;
+    }
+    .filter-select select {
+        width: 100%;
+    }
+}
+</style>
+
 <script>
     let currentTab = 'cars';
     let allBrands = [];
     let allModels = [];
     let allCarTypes = [];
+    let allCars = [];
     
     // Tab switching
     function switchTab(tab) {
@@ -308,7 +433,7 @@
                     allBrands = data.brands;
                     allCarTypes = data.types;
                     
-                    // Populate brand dropdowns
+                    // Populate brand dropdowns (form)
                     const brandSelects = document.querySelectorAll('#car_brand, #model_brand');
                     brandSelects.forEach(select => {
                         select.innerHTML = '<option value="">Select Brand</option>';
@@ -320,7 +445,17 @@
                         });
                     });
                     
-                    // Populate car type dropdown
+                    // Populate filter brand dropdown
+                    const filterBrand = document.getElementById('filter-brand');
+                    filterBrand.innerHTML = '<option value="">All Brands</option>';
+                    data.brands.forEach(brand => {
+                        const option = document.createElement('option');
+                        option.value = brand.BRAND_NAME;
+                        option.textContent = brand.BRAND_NAME;
+                        filterBrand.appendChild(option);
+                    });
+                    
+                    // Populate car type dropdown (form)
                     const carTypeSelect = document.getElementById('car_type');
                     carTypeSelect.innerHTML = '<option value="">Select Car Type</option>';
                     data.types.forEach(type => {
@@ -328,6 +463,16 @@
                         option.value = type.CARTYPE_ID;
                         option.textContent = type.CARTYPE_NAME;
                         carTypeSelect.appendChild(option);
+                    });
+                    
+                    // Populate filter type dropdown
+                    const filterType = document.getElementById('filter-type');
+                    filterType.innerHTML = '<option value="">All Types</option>';
+                    data.types.forEach(type => {
+                        const option = document.createElement('option');
+                        option.value = type.CARTYPE_NAME;
+                        option.textContent = type.CARTYPE_NAME;
+                        filterType.appendChild(option);
                     });
                 }
             });
@@ -368,61 +513,99 @@
         fetch('/api/admin/cars')
             .then(res => res.json())
             .then(data => {
-                const container = document.getElementById('cars-container');
                 if (data.success) {
-                    const cars = data.cars;
-                    if (cars.length === 0) {
-                        container.innerHTML = '<p class="no-results">No cars found.</p>';
-                        return;
-                    }
-                    
-                    container.innerHTML = `
-                        <div class="admin-table-container">
-                            <table class="admin-table">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Car</th>
-                                        <th>Type</th>
-                                        <th>Fuel</th>
-                                        <th>Rate</th>
-                                        <th>Seats/Bags</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${cars.map(car => `
-                                        <tr>
-                                            <td>#${car.CAR_ID}</td>
-                                            <td>
-                                                <strong>${car.BRAND_NAME} ${car.MODEL_NAME}</strong><br>
-                                                <small>${car.COLOUR || 'N/A'}</small>
-                                            </td>
-                                            <td>${car.CARTYPE_NAME}</td>
-                                            <td>${car.FUEL_TYPE || 'N/A'}</td>
-                                            <td>RM ${parseFloat(car.RATE).toFixed(2)}</td>
-                                            <td>${car.SEAT || 0} Seats / ${car.SUITCASE || 0} Bags</td>
-                                            <td>
-                                                <button class="btn btn-sm btn-primary" onclick="editCar(${car.CAR_ID})">
-                                                    <i class="fas fa-edit"></i> Edit
-                                                </button>
-                                                <button class="btn btn-sm btn-danger" onclick="deleteCar(${car.CAR_ID})">
-                                                    <i class="fas fa-trash"></i> Delete
-                                                </button>
-                                            </td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
+                    allCars = data.cars;
+                    filterCars();
                 } else {
-                    container.innerHTML = `<p class="error">${data.message}</p>`;
+                    document.getElementById('cars-container').innerHTML = `<p class="error">${data.message}</p>`;
                 }
             })
             .catch(err => {
                 document.getElementById('cars-container').innerHTML = '<p class="error">Failed to load cars.</p>';
             });
+    }
+    
+    // Filter cars
+    function filterCars() {
+        const searchTerm = document.getElementById('car-search').value.toLowerCase();
+        const brandFilter = document.getElementById('filter-brand').value;
+        const typeFilter = document.getElementById('filter-type').value;
+        const fuelFilter = document.getElementById('filter-fuel').value;
+        
+        let filteredCars = allCars.filter(car => {
+            const searchMatch = !searchTerm || 
+                car.BRAND_NAME.toLowerCase().includes(searchTerm) ||
+                car.MODEL_NAME.toLowerCase().includes(searchTerm) ||
+                (car.COLOUR && car.COLOUR.toLowerCase().includes(searchTerm)) ||
+                car.CAR_ID.toString().includes(searchTerm);
+            const brandMatch = !brandFilter || car.BRAND_NAME === brandFilter;
+            const typeMatch = !typeFilter || car.CARTYPE_NAME === typeFilter;
+            const fuelMatch = !fuelFilter || car.FUEL_TYPE === fuelFilter;
+            return searchMatch && brandMatch && typeMatch && fuelMatch;
+        });
+        
+        renderCarsTable(filteredCars);
+    }
+    
+    // Clear filters
+    function clearFilters() {
+        document.getElementById('car-search').value = '';
+        document.getElementById('filter-brand').value = '';
+        document.getElementById('filter-type').value = '';
+        document.getElementById('filter-fuel').value = '';
+        filterCars();
+    }
+    
+    // Render cars table
+    function renderCarsTable(cars) {
+        const container = document.getElementById('cars-container');
+        document.getElementById('cars-count').textContent = `${cars.length} car${cars.length !== 1 ? 's' : ''} found`;
+        
+        if (cars.length === 0) {
+            container.innerHTML = '<p class="no-results">No cars found matching your criteria.</p>';
+            return;
+        }
+        
+        container.innerHTML = `
+            <div class="admin-table-container">
+                <table class="admin-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Car</th>
+                            <th>Type</th>
+                            <th>Fuel</th>
+                            <th>Rate</th>
+                            <th>Seats/Bags</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${cars.map(car => `
+                            <tr>
+                                <td>#${car.CAR_ID}</td>
+                                <td>
+                                    <strong>${car.BRAND_NAME} ${car.MODEL_NAME}</strong><br>
+                                    <small>${car.COLOUR || 'N/A'}</small>
+                                </td>
+                                <td>${car.CARTYPE_NAME}</td>
+                                <td>${car.FUEL_TYPE || 'N/A'}</td>
+                                <td>RM ${parseFloat(car.RATE).toFixed(2)}</td>
+                                <td>${car.SEAT || 0} Seats / ${car.SUITCASE || 0} Bags</td>
+                                <td>
+                                    <button class="btn btn-sm btn-primary" onclick="editCar(${car.CAR_ID})">
+                                        <i class="fas fa-edit"></i> Edit
+                                    </button>
+                                    <button class="btn btn-sm btn-danger" onclick="deleteCar(${car.CAR_ID})">
+                                        <i class="fas fa-trash"></i> Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
     }
     
     // Show add car modal
@@ -580,8 +763,8 @@
                                         <th>Booking ID</th>
                                         <th>Customer</th>
                                         <th>Car</th>
-                                        <th>Pickup Date</th>
-                                        <th>Drop-off Date</th>
+                                        <th>Pickup Date & Time</th>
+                                        <th>Drop-off Date & Time</th>
                                         <th>Pickup Location</th>
                                         <th>Drop-off Location</th>
                                         <th>Price</th>
@@ -593,6 +776,7 @@
                                         const pickupDate = new Date(booking.PICKUP_DATE);
                                         const dropoffDate = new Date(booking.DROPOFF_DATE);
                                         const isPaid = booking.PAYMENT_STATUS === 'Paid';
+                                        const formatDateTime = (d) => d.toLocaleDateString('en-GB') + '<br><small>' + d.toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'}) + '</small>';
                                         return `
                                             <tr>
                                                 <td>#${booking.BOOKING_ID}</td>
@@ -602,8 +786,8 @@
                                                     <small>${booking.CUST_PHONE || ''}</small>
                                                 </td>
                                                 <td>${booking.BRAND_NAME} ${booking.MODEL_NAME}</td>
-                                                <td>${pickupDate.toLocaleDateString()}</td>
-                                                <td>${dropoffDate.toLocaleDateString()}</td>
+                                                <td>${formatDateTime(pickupDate)}</td>
+                                                <td>${formatDateTime(dropoffDate)}</td>
                                                 <td>${booking.PICKUP_LOCATION || 'N/A'}</td>
                                                 <td>${booking.DROPOFF_LOCATION || 'N/A'}</td>
                                                 <td>RM ${parseFloat(booking.PRICE).toFixed(2)}</td>
@@ -656,8 +840,9 @@
                                 <table class="admin-table">
                                     <thead>
                                         <tr>
-                                            <th>ID</th>
+                                            <th style="width: 100px;">ID</th>
                                             <th>Brand Name</th>
+                                            <th style="width: 200px;">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -665,6 +850,14 @@
                                             <tr>
                                                 <td>#${brand.BRAND_ID}</td>
                                                 <td>${brand.BRAND_NAME}</td>
+                                                <td style="white-space: nowrap;">
+                                                    <button class="btn btn-sm btn-primary" onclick="editBrand(${brand.BRAND_ID}, '${brand.BRAND_NAME.replace(/'/g, "\\'")}')">
+                                                        <i class="fas fa-edit"></i> Edit
+                                                    </button>
+                                                    <button class="btn btn-sm btn-danger" onclick="deleteBrand(${brand.BRAND_ID})">
+                                                        <i class="fas fa-trash"></i> Delete
+                                                    </button>
+                                                </td>
                                             </tr>
                                         `).join('')}
                                     </tbody>
@@ -677,9 +870,10 @@
                                 <table class="admin-table">
                                     <thead>
                                         <tr>
-                                            <th>ID</th>
+                                            <th style="width: 100px;">ID</th>
                                             <th>Model Name</th>
                                             <th>Brand</th>
+                                            <th style="width: 200px;">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -688,6 +882,14 @@
                                                 <td>#${model.MODEL_ID}</td>
                                                 <td>${model.MODEL_NAME}</td>
                                                 <td>${model.BRAND_NAME}</td>
+                                                <td style="white-space: nowrap;">
+                                                    <button class="btn btn-sm btn-primary" onclick="editModel(${model.MODEL_ID}, '${model.MODEL_NAME.replace(/'/g, "\\'")}', ${model.BRAND_ID})">
+                                                        <i class="fas fa-edit"></i> Edit
+                                                    </button>
+                                                    <button class="btn btn-sm btn-danger" onclick="deleteModel(${model.MODEL_ID})">
+                                                        <i class="fas fa-trash"></i> Delete
+                                                    </button>
+                                                </td>
                                             </tr>
                                         `).join('')}
                                     </tbody>
@@ -704,9 +906,18 @@
             });
     }
     
-    // Brand and Model modals
+    // Brand modals and functions
     function showAddBrandModal() {
+        document.getElementById('brand-modal-title').textContent = 'Add New Brand';
+        document.getElementById('edit_brand_id').value = '';
         document.getElementById('brand_name').value = '';
+        document.getElementById('brandModal').style.display = 'block';
+    }
+    
+    function editBrand(brandId, brandName) {
+        document.getElementById('brand-modal-title').textContent = 'Edit Brand';
+        document.getElementById('edit_brand_id').value = brandId;
+        document.getElementById('brand_name').value = brandName;
         document.getElementById('brandModal').style.display = 'block';
     }
     
@@ -716,15 +927,21 @@
     
     function saveBrand(event) {
         event.preventDefault();
-        fetch('/api/admin/brand', {
-            method: 'POST',
+        const brandId = document.getElementById('edit_brand_id').value;
+        const brandName = document.getElementById('brand_name').value;
+        
+        const url = brandId ? `/api/admin/brand/${brandId}` : '/api/admin/brand';
+        const method = brandId ? 'PUT' : 'POST';
+        
+        fetch(url, {
+            method: method,
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({brand_name: document.getElementById('brand_name').value})
+            body: JSON.stringify({brand_name: brandName})
         })
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    alert('Brand added successfully!');
+                    alert(brandId ? 'Brand updated successfully!' : 'Brand added successfully!');
                     closeBrandModal();
                     loadFilters();
                     loadBrandsAndModels();
@@ -734,9 +951,40 @@
             });
     }
     
+    function deleteBrand(brandId) {
+        if (!confirm('Are you sure you want to delete this brand? This will fail if there are models or cars using this brand.')) {
+            return;
+        }
+        
+        fetch(`/api/admin/brand/${brandId}`, {
+            method: 'DELETE'
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Brand deleted successfully!');
+                    loadFilters();
+                    loadBrandsAndModels();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+    }
+    
+    // Model modals and functions
     function showAddModelModal() {
+        document.getElementById('model-modal-title').textContent = 'Add New Model';
+        document.getElementById('edit_model_id').value = '';
         document.getElementById('model_name').value = '';
         document.getElementById('model_brand').value = '';
+        document.getElementById('modelModal').style.display = 'block';
+    }
+    
+    function editModel(modelId, modelName, brandId) {
+        document.getElementById('model-modal-title').textContent = 'Edit Model';
+        document.getElementById('edit_model_id').value = modelId;
+        document.getElementById('model_name').value = modelName;
+        document.getElementById('model_brand').value = brandId;
         document.getElementById('modelModal').style.display = 'block';
     }
     
@@ -746,20 +994,48 @@
     
     function saveModel(event) {
         event.preventDefault();
-        fetch('/api/admin/model', {
-            method: 'POST',
+        const modelId = document.getElementById('edit_model_id').value;
+        const modelName = document.getElementById('model_name').value;
+        const brandId = document.getElementById('model_brand').value;
+        
+        const url = modelId ? `/api/admin/model/${modelId}` : '/api/admin/model';
+        const method = modelId ? 'PUT' : 'POST';
+        
+        fetch(url, {
+            method: method,
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                model_name: document.getElementById('model_name').value,
-                brand_id: document.getElementById('model_brand').value
+                model_name: modelName,
+                brand_id: brandId
             })
         })
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    alert('Model added successfully!');
+                    alert(modelId ? 'Model updated successfully!' : 'Model added successfully!');
                     closeModelModal();
                     loadFilters();
+                    loadBrandsAndModels();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+    }
+    
+    function deleteModel(modelId) {
+        if (!confirm('Are you sure you want to delete this model? This will fail if there are cars using this model.')) {
+            return;
+        }
+        
+        fetch(`/api/admin/model/${modelId}`, {
+            method: 'DELETE'
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Model deleted successfully!');
+                    loadFilters();
+                    loadBrandsAndModels();
                 } else {
                     alert('Error: ' + data.message);
                 }

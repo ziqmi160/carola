@@ -126,3 +126,5 @@ const carTypeImages = {
 - Verify CSS is loaded properly
 
 
+
+

@@ -1,0 +1,735 @@
+{% extends "base.html" %}
+
+{% block title %}Booking Confirmed - Carola Car Rental{% endblock %}
+
+{% block content %}
+<div class="confirmation-page">
+    <div class="container">
+        <div class="confirmation-card" id="printable-area">
+            <div class="confirmation-header">
+                <div class="success-icon">
+                    <i class="fas fa-check-circle"></i>
+                </div>
+                <h1>Booking Confirmed!</h1>
+                <p class="confirmation-message">Thank you for your booking. Your reservation has been confirmed.</p>
+            </div>
+            
+            <div class="booking-reference">
+                <span class="label">Booking Reference</span>
+                <span class="reference-number" id="booking-ref">#{{ booking_id }}</span>
+            </div>
+            
+            <div id="booking-details">
+                <div class="loading">Loading booking details...</div>
+            </div>
+            
+            <div class="confirmation-footer">
+                <div class="company-info">
+                    <div class="logo">
+                        <i class="fas fa-car"></i>
+                        <span>Carola Car Rental</span>
+                    </div>
+                    <p>Thank you for choosing Carola Car Rental!</p>
+                    <p class="contact-info">
+                        <i class="fas fa-phone"></i> +60 12-345 6789 | 
+                        <i class="fas fa-envelope"></i> support@carola.com
+                    </p>
+                </div>
+                <div class="qr-placeholder">
+                    <div class="qr-code">
+                        <i class="fas fa-qrcode"></i>
+                    </div>
+                    <small>Scan for digital receipt</small>
+                </div>
+            </div>
+        </div>
+        
+        <div class="action-buttons no-print">
+            <button class="btn btn-primary btn-large" onclick="printBooking()">
+                <i class="fas fa-print"></i> Print Confirmation
+            </button>
+            <a href="/my-bookings" class="btn btn-secondary btn-large">
+                <i class="fas fa-list"></i> View All Bookings
+            </a>
+            <a href="/cars" class="btn btn-outline btn-large">
+                <i class="fas fa-car"></i> Book Another Car
+            </a>
+        </div>
+    </div>
+</div>
+
+<style>
+.confirmation-page {
+    padding: 2rem 0;
+    min-height: 80vh;
+    background: linear-gradient(135deg, #f0fdf4 0%, #ecfeff 100%);
+}
+
+.confirmation-card {
+    background: white;
+    border-radius: 1.5rem;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+    max-width: 800px;
+    margin: 0 auto;
+    overflow: hidden;
+}
+
+.confirmation-header {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    padding: 3rem 2rem;
+    text-align: center;
+}
+
+.success-icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    animation: bounceIn 0.6s ease-out;
+}
+
+@keyframes bounceIn {
+    0% { transform: scale(0); opacity: 0; }
+    50% { transform: scale(1.2); }
+    100% { transform: scale(1); opacity: 1; }
+}
+
+.confirmation-header h1 {
+    margin: 0 0 0.5rem 0;
+    font-size: 2.5rem;
+}
+
+.confirmation-message {
+    opacity: 0.9;
+    font-size: 1.1rem;
+    margin: 0;
+}
+
+.booking-reference {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1.5rem;
+    background: #f0fdf4;
+    border-bottom: 2px dashed #10b981;
+}
+
+.booking-reference .label {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #059669;
+    margin-bottom: 0.25rem;
+}
+
+.reference-number {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #065f46;
+    font-family: 'Courier New', monospace;
+}
+
+#booking-details {
+    padding: 2rem;
+}
+
+.details-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+}
+
+.detail-section {
+    background: var(--bg-color);
+    padding: 1.5rem;
+    border-radius: 1rem;
+    border-left: 4px solid var(--primary-color);
+}
+
+.detail-section h3 {
+    margin: 0 0 1rem 0;
+    color: var(--text-primary);
+    font-size: 1.1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.detail-section h3 i {
+    color: var(--primary-color);
+}
+
+.detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.detail-row:last-child {
+    border-bottom: none;
+}
+
+.detail-row .label {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.detail-row .value {
+    color: var(--text-primary);
+    font-weight: 500;
+    text-align: right;
+}
+
+.car-details-section {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+    color: white;
+    border-left: none;
+}
+
+.car-image-confirm {
+    width: 200px;
+    height: 130px;
+    object-fit: cover;
+    border-radius: 0.75rem;
+    flex-shrink: 0;
+}
+
+.car-info-confirm h2 {
+    margin: 0 0 0.5rem 0;
+    font-size: 1.5rem;
+}
+
+.car-info-confirm .car-specs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+
+.car-info-confirm .spec {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.9rem;
+    opacity: 0.9;
+}
+
+.car-info-confirm .spec i {
+    color: var(--primary-color);
+}
+
+.payment-summary {
+    grid-column: 1 / -1;
+    background: white;
+    border: 2px solid var(--primary-color);
+    border-left: 4px solid var(--primary-color);
+}
+
+.payment-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.payment-row:last-child {
+    border-bottom: none;
+}
+
+.payment-row.total {
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: white;
+    margin: 1rem -1.5rem -1.5rem -1.5rem;
+    padding: 1.25rem 1.5rem;
+    border-radius: 0 0 0.75rem 0.75rem;
+    font-size: 1.25rem;
+}
+
+.payment-row .label {
+    color: var(--text-secondary);
+}
+
+.payment-row.total .label,
+.payment-row.total .value {
+    color: white;
+    font-weight: 600;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 2rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.status-badge.paid {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.status-badge.pending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.confirmation-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 2rem;
+    background: #f8fafc;
+    border-top: 2px dashed var(--border-color);
+}
+
+.company-info .logo {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-bottom: 0.5rem;
+}
+
+.company-info .logo i {
+    font-size: 1.5rem;
+}
+
+.company-info p {
+    margin: 0.25rem 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.contact-info {
+    margin-top: 0.5rem !important;
+}
+
+.contact-info i {
+    color: var(--primary-color);
+}
+
+.qr-placeholder {
+    text-align: center;
+}
+
+.qr-code {
+    width: 80px;
+    height: 80px;
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 0.25rem;
+}
+
+.qr-code i {
+    font-size: 3rem;
+    color: var(--text-secondary);
+}
+
+.qr-placeholder small {
+    color: var(--text-secondary);
+    font-size: 0.75rem;
+}
+
+.action-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    margin-top: 2rem;
+    flex-wrap: wrap;
+}
+
+.btn-outline {
+    background: transparent;
+    border: 2px solid var(--primary-color);
+    color: var(--primary-color);
+}
+
+.btn-outline:hover {
+    background: var(--primary-color);
+    color: white;
+}
+
+/* Print Styles - Fit on single page */
+@media print {
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    
+    html, body {
+        background: white !important;
+        font-size: 11px !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    
+    .navbar, .footer, .no-print {
+        display: none !important;
+    }
+    
+    .confirmation-page {
+        padding: 0 !important;
+        background: white !important;
+        min-height: auto !important;
+    }
+    
+    .confirmation-card {
+        box-shadow: none !important;
+        border: 1px solid #ddd;
+        max-width: 100% !important;
+        border-radius: 0.5rem !important;
+    }
+    
+    .confirmation-header {
+        background: #10b981 !important;
+        padding: 1rem !important;
+    }
+    
+    .confirmation-header h1 {
+        font-size: 1.5rem !important;
+        margin-bottom: 0.25rem !important;
+    }
+    
+    .confirmation-message {
+        font-size: 0.85rem !important;
+    }
+    
+    .success-icon {
+        font-size: 2rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    .booking-reference {
+        padding: 0.75rem !important;
+    }
+    
+    .reference-number {
+        font-size: 1.25rem !important;
+    }
+    
+    #booking-details {
+        padding: 0.75rem !important;
+    }
+    
+    .details-grid {
+        grid-template-columns: 1fr 1fr !important;
+        gap: 0.5rem !important;
+    }
+    
+    .detail-section {
+        padding: 0.5rem 0.75rem !important;
+        border-radius: 0.35rem !important;
+        border-left-width: 3px !important;
+    }
+    
+    .detail-section h3 {
+        font-size: 0.8rem !important;
+        margin-bottom: 0.35rem !important;
+    }
+    
+    .detail-row {
+        padding: 0.2rem 0 !important;
+        font-size: 0.75rem !important;
+    }
+    
+    .car-details-section {
+        background: #1a1a2e !important;
+        padding: 0.75rem !important;
+        gap: 0.75rem !important;
+    }
+    
+    .car-image-confirm {
+        width: 120px !important;
+        height: 80px !important;
+    }
+    
+    .car-info-confirm h2 {
+        font-size: 1rem !important;
+        margin-bottom: 0.15rem !important;
+    }
+    
+    .car-info-confirm p {
+        font-size: 0.7rem !important;
+    }
+    
+    .car-info-confirm .car-specs {
+        gap: 0.5rem !important;
+        margin-top: 0.35rem !important;
+    }
+    
+    .car-info-confirm .spec {
+        font-size: 0.7rem !important;
+    }
+    
+    .payment-summary {
+        padding: 0.5rem 0.75rem !important;
+    }
+    
+    .payment-row {
+        padding: 0.25rem 0 !important;
+        font-size: 0.75rem !important;
+    }
+    
+    .payment-row.total {
+        background: #ff6600 !important;
+        margin: 0.5rem -0.75rem -0.5rem -0.75rem !important;
+        padding: 0.5rem 0.75rem !important;
+        font-size: 0.85rem !important;
+    }
+    
+    .confirmation-footer {
+        padding: 0.75rem !important;
+        gap: 0.5rem !important;
+    }
+    
+    .company-info .logo {
+        font-size: 0.9rem !important;
+        margin-bottom: 0.25rem !important;
+    }
+    
+    .company-info .logo i {
+        font-size: 1rem !important;
+    }
+    
+    .company-info p {
+        font-size: 0.7rem !important;
+        margin: 0.1rem 0 !important;
+    }
+    
+    .qr-code {
+        width: 50px !important;
+        height: 50px !important;
+    }
+    
+    .qr-code i {
+        font-size: 1.75rem !important;
+    }
+    
+    .qr-placeholder small {
+        font-size: 0.6rem !important;
+    }
+    
+    /* Hide the important notice in print to save space */
+    #booking-details > div:last-child {
+        padding: 0.5rem !important;
+        margin-top: 0.5rem !important;
+        font-size: 0.7rem !important;
+    }
+    
+    .main-content {
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    
+    .status-badge {
+        padding: 0.15rem 0.4rem !important;
+        font-size: 0.65rem !important;
+    }
+    
+    @page {
+        margin: 0.3in;
+        size: A4;
+    }
+}
+
+@media (max-width: 768px) {
+    .details-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .car-details-section {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .car-image-confirm {
+        width: 100%;
+        height: 180px;
+    }
+    
+    .confirmation-footer {
+        flex-direction: column;
+        gap: 1.5rem;
+        text-align: center;
+    }
+    
+    .action-buttons {
+        flex-direction: column;
+    }
+    
+    .action-buttons .btn {
+        width: 100%;
+    }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const bookingId = {{ booking_id }};
+    
+    // Load booking details
+    fetch('/api/booking-details/' + bookingId)
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                const booking = data.booking;
+                const pickupDate = new Date(booking.PICKUP_DATE);
+                const dropoffDate = new Date(booking.DROPOFF_DATE);
+                
+                // Format date and time (UK format DD/MM/YYYY)
+                const formatDateTime = (date) => {
+                    const options = { 
+                        weekday: 'short', 
+                        day: 'numeric',
+                        month: 'short', 
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    };
+                    return date.toLocaleDateString('en-GB', options);
+                };
+                
+                const formatDate = (date) => {
+                    return date.toLocaleDateString('en-GB', { 
+                        day: 'numeric',
+                        month: 'long', 
+                        year: 'numeric'
+                    });
+                };
+                
+                // Calculate rental days
+                const diffMs = dropoffDate - pickupDate;
+                const diffHours = diffMs / (1000 * 60 * 60);
+                const days = Math.max(1, Math.ceil(diffHours / 24));
+                
+                const isPaid = booking.PAYMENT_STATUS === 'Paid';
+                
+                document.getElementById('booking-details').innerHTML = `
+                    <div class="details-grid">
+                        <div class="detail-section car-details-section">
+                            <img src="${booking.ATTACHMENTS ? '/uploads/' + booking.ATTACHMENTS : 'https://via.placeholder.com/200x130?text=' + encodeURIComponent(booking.BRAND_NAME)}" 
+                                 alt="${booking.BRAND_NAME} ${booking.MODEL_NAME}"
+                                 class="car-image-confirm"
+                                 onerror="this.src='https://via.placeholder.com/200x130?text=Car'">
+                            <div class="car-info-confirm">
+                                <h2>${booking.BRAND_NAME} ${booking.MODEL_NAME}</h2>
+                                <p style="opacity: 0.8; margin: 0;">${booking.CARTYPE_NAME || 'Vehicle'}</p>
+                                <div class="car-specs">
+                                    <span class="spec"><i class="fas fa-palette"></i> ${booking.COLOUR || 'N/A'}</span>
+                                    <span class="spec"><i class="fas fa-users"></i> ${booking.SEAT || 'N/A'} Seats</span>
+                                    <span class="spec"><i class="fas fa-door-open"></i> ${booking.DOOR || 'N/A'} Doors</span>
+                                    <span class="spec"><i class="fas fa-suitcase"></i> ${booking.SUITCASE || 'N/A'} Bags</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="detail-section">
+                            <h3><i class="fas fa-calendar-check"></i> Pickup Details</h3>
+                            <div class="detail-row">
+                                <span class="label">Date & Time</span>
+                                <span class="value">${formatDateTime(pickupDate)}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">Location</span>
+                                <span class="value">${booking.PICKUP_LOCATION || 'N/A'}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="detail-section">
+                            <h3><i class="fas fa-calendar-times"></i> Drop-off Details</h3>
+                            <div class="detail-row">
+                                <span class="label">Date & Time</span>
+                                <span class="value">${formatDateTime(dropoffDate)}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">Location</span>
+                                <span class="value">${booking.DROPOFF_LOCATION || 'N/A'}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="detail-section">
+                            <h3><i class="fas fa-user"></i> Customer Details</h3>
+                            <div class="detail-row">
+                                <span class="label">Name</span>
+                                <span class="value">${booking.CUST_FNAME} ${booking.CUST_LNAME}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">Email</span>
+                                <span class="value">${booking.CUST_EMAIL || 'N/A'}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">Phone</span>
+                                <span class="value">${booking.CUST_PHONE || 'N/A'}</span>
+                            </div>
+                        </div>
+                        
+                        <div class="detail-section">
+                            <h3><i class="fas fa-info-circle"></i> Booking Info</h3>
+                            <div class="detail-row">
+                                <span class="label">Booking ID</span>
+                                <span class="value">#${booking.BOOKING_ID}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">Rental Duration</span>
+                                <span class="value">${days} day${days > 1 ? 's' : ''}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="label">Status</span>
+                                <span class="value">
+                                    <span class="status-badge ${isPaid ? 'paid' : 'pending'}">
+                                        <i class="fas ${isPaid ? 'fa-check-circle' : 'fa-clock'}"></i>
+                                        ${booking.PAYMENT_STATUS}
+                                    </span>
+                                </span>
+                            </div>
+                        </div>
+                        
+                        <div class="detail-section payment-summary">
+                            <h3><i class="fas fa-receipt"></i> Payment Summary</h3>
+                            <div class="payment-row">
+                                <span class="label">Daily Rate</span>
+                                <span class="value">RM ${parseFloat(booking.RATE).toFixed(2)}</span>
+                            </div>
+                            <div class="payment-row">
+                                <span class="label">Number of Days</span>
+                                <span class="value">${days} day${days > 1 ? 's' : ''}</span>
+                            </div>
+                            <div class="payment-row total">
+                                <span class="label">Total Amount</span>
+                                <span class="value">RM ${parseFloat(booking.PRICE).toFixed(2)}</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="text-align: center; margin-top: 1.5rem; padding: 1rem; background: #fef3c7; border-radius: 0.5rem; color: #92400e;">
+                        <i class="fas fa-info-circle"></i>
+                        <strong>Important:</strong> Please present this confirmation at the pickup location. Bring a valid ID and driving license.
+                    </div>
+                `;
+            } else {
+                document.getElementById('booking-details').innerHTML = `<p class="error">${data.message}</p>`;
+            }
+        })
+        .catch(err => {
+            document.getElementById('booking-details').innerHTML = '<p class="error">Failed to load booking details.</p>';
+        });
+    
+    function printBooking() {
+        window.print();
+    }
+</script>
+{% endblock %}
+

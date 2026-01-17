@@ -120,10 +120,10 @@
                     const logoFile = brandLogos[brand.BRAND_NAME] || null;
                     const logoPath = logoFile ? `/uploads/brands/${logoFile}` : null;
                     return `
-                        <div class="brand-item">
+                        <a href="/cars?brand=${brand.BRAND_ID}" class="brand-item" title="View ${brand.BRAND_NAME} cars">
                             ${logoPath ? `<img src="${logoPath}" alt="${brand.BRAND_NAME} Logo" class="brand-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
                             <h4 style="display: none;">${brand.BRAND_NAME}</h4>` : `<h4>${brand.BRAND_NAME}</h4>`}
-                        </div>
+                        </a>
                     `;
                 }).join('');
             }
@@ -149,10 +149,6 @@
                                  alt="${car.BRAND_NAME} ${car.MODEL_NAME}" 
                                  onerror="this.src='https://via.placeholder.com/400x250?text=Car+Image'">
                             <div class="car-badge">RM ${parseFloat(car.RATE).toFixed(0)}/ Day</div>
-                            <div class="car-rating">
-                                <i class="fas fa-star"></i>
-                                <span>4.8</span>
-                            </div>
                         </div>
                         <div class="car-info">
                             <h3>${car.BRAND_NAME} ${car.MODEL_NAME}</h3>
@@ -192,7 +188,7 @@
                     const imageFile = carTypeImages[type.CARTYPE_NAME] || null;
                     const imagePath = imageFile ? `/uploads/car-types/${imageFile}` : null;
                     return `
-                        <div class="car-type-item">
+                        <a href="/cars?type=${type.CARTYPE_ID}" class="car-type-item" title="View ${type.CARTYPE_NAME} cars">
                             ${imagePath ? `
                                 <div class="car-type-image-wrapper">
                                     <img src="${imagePath}" alt="${type.CARTYPE_NAME}" class="car-type-image" 
@@ -203,7 +199,7 @@
                             ` : `
                                 <h4>${type.CARTYPE_NAME}</h4>
                             `}
-                        </div>
+                        </a>
                     `;
                 }).join('');
             }

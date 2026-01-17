@@ -1,0 +1,566 @@
+{% extends "base.html" %}
+
+{% block title %}Payment - Carola Car Rental{% endblock %}
+
+{% block content %}
+<div class="payment-page">
+    <div class="container">
+        <h1 class="page-title">Complete Payment</h1>
+        
+        <div class="payment-container">
+            <div class="payment-form-section">
+                <div class="payment-card-preview">
+                    <div class="card-front">
+                        <div class="card-chip">
+                            <i class="fas fa-sim-card"></i>
+                        </div>
+                        <div class="card-number" id="preview-card-number">•••• •••• •••• ••••</div>
+                        <div class="card-details-row">
+                            <div class="card-holder">
+                                <span class="label">Card Holder</span>
+                                <span class="value" id="preview-card-name">YOUR NAME</span>
+                            </div>
+                            <div class="card-expiry">
+                                <span class="label">Expires</span>
+                                <span class="value" id="preview-card-expiry">MM/YY</span>
+                            </div>
+                        </div>
+                        <div class="card-type-icon" id="card-type-icon">
+                            <i class="fas fa-credit-card"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <form id="paymentForm">
+                    <input type="hidden" id="booking_id" value="{{ booking_id }}">
+                    
+                    <div class="form-group">
+                        <label for="card_name">
+                            <i class="fas fa-user"></i> Cardholder Name
+                        </label>
+                        <input type="text" id="card_name" name="card_name" placeholder="John Doe" required 
+                               pattern="[A-Za-z\s]+" title="Please enter a valid name (letters only)">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="card_number">
+                            <i class="fas fa-credit-card"></i> Card Number
+                        </label>
+                        <input type="text" id="card_number" name="card_number" placeholder="1234 5678 9012 3456" 
+                               maxlength="19" required autocomplete="cc-number">
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="card_expiry">
+                                <i class="fas fa-calendar"></i> Expiry Date
+                            </label>
+                            <input type="text" id="card_expiry" name="card_expiry" placeholder="MM/YY" 
+                                   maxlength="5" required autocomplete="cc-exp">
+                        </div>
+                        <div class="form-group">
+                            <label for="card_cvv">
+                                <i class="fas fa-lock"></i> CVV
+                            </label>
+                            <input type="password" id="card_cvv" name="card_cvv" placeholder="•••" 
+                                   maxlength="4" required autocomplete="cc-csc">
+                        </div>
+                    </div>
+                    
+                    <div class="secure-notice">
+                        <i class="fas fa-shield-alt"></i>
+                        <span>Your payment information is secure and encrypted</span>
+                    </div>
+                    
+                    <button type="submit" class="btn btn-primary btn-block btn-large" id="payBtn">
+                        <i class="fas fa-lock"></i> Pay Now <span id="pay-amount"></span>
+                    </button>
+                </form>
+                <div id="message" class="message"></div>
+            </div>
+            
+            <div class="booking-summary-section">
+                <h2><i class="fas fa-receipt"></i> Booking Summary</h2>
+                <div id="booking-summary">
+                    <div class="loading">Loading booking details...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.payment-page {
+    padding: 2rem 0;
+    min-height: 80vh;
+}
+
+.payment-container {
+    display: grid;
+    grid-template-columns: 1fr 400px;
+    gap: 2rem;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.payment-form-section {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 1rem;
+    box-shadow: var(--shadow);
+}
+
+.payment-card-preview {
+    margin-bottom: 2rem;
+    perspective: 1000px;
+}
+
+.card-front {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    color: white;
+    position: relative;
+    height: 200px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.card-front::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -50%;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+}
+
+.card-chip {
+    font-size: 2rem;
+    color: #ffd700;
+    margin-bottom: 1.5rem;
+}
+
+.card-number {
+    font-size: 1.4rem;
+    letter-spacing: 3px;
+    font-family: 'Courier New', monospace;
+    margin-bottom: 1.5rem;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.card-details-row {
+    display: flex;
+    justify-content: space-between;
+}
+
+.card-holder, .card-expiry {
+    display: flex;
+    flex-direction: column;
+}
+
+.card-holder .label, .card-expiry .label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    opacity: 0.7;
+    margin-bottom: 0.25rem;
+}
+
+.card-holder .value, .card-expiry .value {
+    font-size: 1rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.card-type-icon {
+    position: absolute;
+    top: 1.5rem;
+    right: 1.5rem;
+    font-size: 2.5rem;
+    opacity: 0.9;
+}
+
+.card-type-icon.visa {
+    color: #1a1f71;
+}
+
+.card-type-icon.mastercard {
+    color: #eb001b;
+}
+
+.payment-form-section .form-group label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.payment-form-section .form-group label i {
+    color: var(--primary-color);
+}
+
+.payment-form-section .form-group input {
+    font-size: 1.1rem;
+    padding: 1rem;
+    letter-spacing: 1px;
+}
+
+.secure-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    background: #d1fae5;
+    color: #065f46;
+    border-radius: 0.5rem;
+    margin: 1.5rem 0;
+    font-size: 0.9rem;
+}
+
+.secure-notice i {
+    font-size: 1.2rem;
+}
+
+.booking-summary-section {
+    background: var(--card-bg);
+    padding: 2rem;
+    border-radius: 1rem;
+    box-shadow: var(--shadow);
+    height: fit-content;
+    position: sticky;
+    top: 100px;
+}
+
+.booking-summary-section h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    color: var(--text-primary);
+    padding-bottom: 1rem;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.booking-summary-section h2 i {
+    color: var(--primary-color);
+}
+
+.summary-card {
+    background: var(--bg-color);
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+
+.summary-card h3 {
+    margin: 0 0 0.5rem 0;
+    color: var(--text-primary);
+}
+
+.summary-card .car-type {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+}
+
+.summary-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--border-color);
+    font-size: 0.95rem;
+}
+
+.summary-item:last-child {
+    border-bottom: none;
+}
+
+.summary-item .label {
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.summary-item .label i {
+    color: var(--primary-color);
+    width: 20px;
+}
+
+.summary-item .value {
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.summary-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.25rem;
+    background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+    color: white;
+    border-radius: 0.75rem;
+    margin-top: 1rem;
+}
+
+.summary-total .label {
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.summary-total .amount {
+    font-size: 1.5rem;
+    font-weight: 700;
+}
+
+.payment-methods {
+    display: flex;
+    justify-content: center;
+    gap: 1rem;
+    padding: 1rem 0;
+    border-top: 1px solid var(--border-color);
+    margin-top: 1rem;
+}
+
+.payment-methods i {
+    font-size: 2rem;
+    color: var(--text-secondary);
+    opacity: 0.6;
+}
+
+#payBtn {
+    font-size: 1.1rem;
+    padding: 1rem 2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+#payBtn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+    .payment-container {
+        grid-template-columns: 1fr;
+    }
+    
+    .booking-summary-section {
+        position: static;
+        order: -1;
+    }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const bookingId = document.getElementById('booking_id').value;
+    let bookingData = null;
+    
+    // Load booking details
+    fetch('/api/my-bookings')
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                bookingData = data.bookings.find(b => b.BOOKING_ID == bookingId);
+                
+                if (!bookingData) {
+                    document.getElementById('booking-summary').innerHTML = '<p class="error">Booking not found.</p>';
+                    return;
+                }
+                
+                if (bookingData.PAYMENT_STATUS === 'Paid') {
+                    document.getElementById('booking-summary').innerHTML = '<p class="error">This booking has already been paid.</p>';
+                    document.getElementById('paymentForm').style.display = 'none';
+                    return;
+                }
+                
+                const pickupDate = new Date(bookingData.PICKUP_DATE);
+                const dropoffDate = new Date(bookingData.DROPOFF_DATE);
+                // Format date and time (UK format DD/MM/YYYY)
+                const formatDateTime = (date) => {
+                    return date.toLocaleDateString('en-GB') + ' at ' + date.toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'});
+                };
+                
+                document.getElementById('booking-summary').innerHTML = `
+                    <div class="summary-card">
+                        <h3>${bookingData.BRAND_NAME} ${bookingData.MODEL_NAME}</h3>
+                        <p class="car-type">${bookingData.COLOUR || 'N/A'}</p>
+                    </div>
+                    
+                    <div class="summary-item">
+                        <span class="label"><i class="fas fa-calendar-check"></i> Pickup</span>
+                        <span class="value">${formatDateTime(pickupDate)}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label"><i class="fas fa-calendar-times"></i> Drop-off</span>
+                        <span class="value">${formatDateTime(dropoffDate)}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label"><i class="fas fa-map-marker-alt"></i> Pickup Location</span>
+                        <span class="value">${bookingData.PICKUP_LOCATION || 'N/A'}</span>
+                    </div>
+                    <div class="summary-item">
+                        <span class="label"><i class="fas fa-flag-checkered"></i> Drop-off Location</span>
+                        <span class="value">${bookingData.DROPOFF_LOCATION || 'N/A'}</span>
+                    </div>
+                    
+                    <div class="summary-total">
+                        <span class="label">Total Amount</span>
+                        <span class="amount">RM ${parseFloat(bookingData.PRICE).toFixed(2)}</span>
+                    </div>
+                    
+                    <div class="payment-methods">
+                        <i class="fab fa-cc-visa"></i>
+                        <i class="fab fa-cc-mastercard"></i>
+                        <i class="fab fa-cc-amex"></i>
+                    </div>
+                `;
+                
+                document.getElementById('pay-amount').textContent = `RM ${parseFloat(bookingData.PRICE).toFixed(2)}`;
+            } else {
+                document.getElementById('booking-summary').innerHTML = `<p class="error">${data.message}</p>`;
+            }
+        })
+        .catch(err => {
+            document.getElementById('booking-summary').innerHTML = '<p class="error">Failed to load booking details.</p>';
+        });
+    
+    // Card number formatting and preview
+    const cardNumberInput = document.getElementById('card_number');
+    const cardNameInput = document.getElementById('card_name');
+    const cardExpiryInput = document.getElementById('card_expiry');
+    
+    cardNumberInput.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\s/g, '').replace(/\D/g, '');
+        let formattedValue = value.match(/.{1,4}/g)?.join(' ') || '';
+        e.target.value = formattedValue;
+        
+        // Update preview
+        let preview = formattedValue || '•••• •••• •••• ••••';
+        while (preview.replace(/\s/g, '').length < 16) {
+            preview += '•';
+        }
+        preview = preview.replace(/\s/g, '').match(/.{1,4}/g)?.join(' ') || '';
+        document.getElementById('preview-card-number').textContent = preview;
+        
+        // Detect card type
+        const cardTypeIcon = document.getElementById('card-type-icon');
+        if (value.startsWith('4')) {
+            cardTypeIcon.innerHTML = '<i class="fab fa-cc-visa"></i>';
+            cardTypeIcon.className = 'card-type-icon visa';
+        } else if (value.startsWith('5') || value.startsWith('2')) {
+            cardTypeIcon.innerHTML = '<i class="fab fa-cc-mastercard"></i>';
+            cardTypeIcon.className = 'card-type-icon mastercard';
+        } else if (value.startsWith('3')) {
+            cardTypeIcon.innerHTML = '<i class="fab fa-cc-amex"></i>';
+            cardTypeIcon.className = 'card-type-icon';
+        } else {
+            cardTypeIcon.innerHTML = '<i class="fas fa-credit-card"></i>';
+            cardTypeIcon.className = 'card-type-icon';
+        }
+    });
+    
+    cardNameInput.addEventListener('input', function(e) {
+        const value = e.target.value.toUpperCase() || 'YOUR NAME';
+        document.getElementById('preview-card-name').textContent = value;
+    });
+    
+    cardExpiryInput.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, '');
+        if (value.length >= 2) {
+            value = value.substring(0, 2) + '/' + value.substring(2);
+        }
+        e.target.value = value;
+        
+        document.getElementById('preview-card-expiry').textContent = value || 'MM/YY';
+    });
+    
+    // Form submission
+    document.getElementById('paymentForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        
+        const cardNumber = document.getElementById('card_number').value.replace(/\s/g, '');
+        const cardExpiry = document.getElementById('card_expiry').value;
+        const cardCvv = document.getElementById('card_cvv').value;
+        const cardName = document.getElementById('card_name').value;
+        
+        // Basic validation
+        if (cardNumber.length < 13 || cardNumber.length > 19) {
+            alert('Please enter a valid card number');
+            return;
+        }
+        
+        const expiryParts = cardExpiry.split('/');
+        if (expiryParts.length !== 2 || expiryParts[0].length !== 2 || expiryParts[1].length !== 2) {
+            alert('Please enter a valid expiry date (MM/YY)');
+            return;
+        }
+        
+        const month = parseInt(expiryParts[0]);
+        const year = parseInt('20' + expiryParts[1]);
+        const now = new Date();
+        const expiry = new Date(year, month);
+        
+        if (month < 1 || month > 12) {
+            alert('Invalid expiry month');
+            return;
+        }
+        
+        if (expiry < now) {
+            alert('Card has expired');
+            return;
+        }
+        
+        if (cardCvv.length < 3 || cardCvv.length > 4) {
+            alert('Please enter a valid CVV');
+            return;
+        }
+        
+        const payBtn = document.getElementById('payBtn');
+        const messageDiv = document.getElementById('message');
+        
+        payBtn.disabled = true;
+        payBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+        messageDiv.className = 'message';
+        messageDiv.textContent = '';
+        
+        try {
+            const response = await fetch('/api/payment', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    booking_id: parseInt(bookingId),
+                    card_name: cardName,
+                    card_last_four: cardNumber.slice(-4)
+                })
+            });
+            
+            const data = await response.json();
+            
+            if (data.success) {
+                messageDiv.className = 'message success';
+                messageDiv.textContent = 'Payment successful! Redirecting to confirmation...';
+                
+                setTimeout(() => {
+                    window.location.href = '/booking-confirmation/' + bookingId;
+                }, 1500);
+            } else {
+                messageDiv.className = 'message error';
+                messageDiv.textContent = data.message;
+                payBtn.disabled = false;
+                payBtn.innerHTML = `<i class="fas fa-lock"></i> Pay Now <span id="pay-amount">RM ${parseFloat(bookingData.PRICE).toFixed(2)}</span>`;
+            }
+        } catch (error) {
+            messageDiv.className = 'message error';
+            messageDiv.textContent = 'An error occurred. Please try again.';
+            payBtn.disabled = false;
+            payBtn.innerHTML = `<i class="fas fa-lock"></i> Pay Now <span id="pay-amount">RM ${parseFloat(bookingData.PRICE).toFixed(2)}</span>`;
+        }
+    });
+</script>
+{% endblock %}
+

@@ -44,7 +44,10 @@ def register():
             return jsonify({'success': True, 'message': 'Registration successful!'})
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 400
-    return render_template('register.html')
+    
+    # Get the 'next' parameter for redirect after registration
+    next_url = request.args.get('next', '')
+    return render_template('register.html', next_url=next_url)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -88,7 +91,9 @@ def login():
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 400
     
-    return render_template('login.html')
+    # Get the 'next' parameter for redirect after login
+    next_url = request.args.get('next', '')
+    return render_template('login.html', next_url=next_url)
 
 @app.route('/logout')
 def logout():
@@ -273,7 +278,8 @@ def get_filters():
 @app.route('/book/<int:car_id>')
 def book_car(car_id):
     if 'user_id' not in session or session.get('user_type') != 'customer':
-        return redirect(url_for('login'))
+        # Store the intended destination so user can be redirected after login
+        return redirect(url_for('login', next=f'/book/{car_id}'))
     return render_template('booking.html', car_id=car_id)
 
 @app.route('/api/bookings', methods=['POST'])
@@ -299,9 +305,12 @@ def create_booking():
             return jsonify({'success': False, 'message': 'Car not found'}), 404
         
         rate = float(car_result[0]['RATE'])
-        pickup_date = datetime.strptime(data['pickup_date'], '%Y-%m-%d')
-        dropoff_date = datetime.strptime(data['dropoff_date'], '%Y-%m-%d')
-        days = (dropoff_date - pickup_date).days + 1
+        # Handle datetime-local format (YYYY-MM-DDTHH:MM)
+        pickup_date = datetime.strptime(data['pickup_date'], '%Y-%m-%dT%H:%M')
+        dropoff_date = datetime.strptime(data['dropoff_date'], '%Y-%m-%dT%H:%M')
+        # Calculate days (minimum 1 day, round up partial days)
+        diff_hours = (dropoff_date - pickup_date).total_seconds() / 3600
+        days = max(1, int((diff_hours + 23) // 24))  # Round up to full days
         price = rate * days
         
         # Check for conflicts
@@ -407,7 +416,81 @@ def my_bookings():
         return redirect(url_for('login'))
     return render_template('my_bookings.html')
 
+@app.route('/booking-confirmation/<int:booking_id>')
+def booking_confirmation(booking_id):
+    if 'user_id' not in session or session.get('user_type') != 'customer':
+        return redirect(url_for('login'))
+    
+    # Verify the booking belongs to this customer
+    verify_query = "SELECT booking_id FROM Booking WHERE booking_id = :booking_id AND cust_id = :cust_id"
+    result = Database.execute_query(verify_query, {
+        'booking_id': booking_id,
+        'cust_id': session['user_id']
+    })
+    
+    if not result:
+        return redirect(url_for('my_bookings'))
+    
+    return render_template('booking_confirm.html', booking_id=booking_id)
+
+@app.route('/api/booking-details/<int:booking_id>', methods=['GET'])
+def get_booking_details(booking_id):
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'message': 'Please login'}), 401
+    
+    try:
+        query = """
+            SELECT b.booking_id, b.pickup_date, b.dropoff_date, b.pickup_location, b.dropoff_location, b.price,
+                   c.car_id, c.rate, c.colour, c.door, c.seat, c.suitcase, c.attachments,
+                   m.model_name, br.brand_name, ct.carType_name,
+                   cu.cust_fname, cu.cust_lname, cu.cust_email, cu.cust_phone,
+                   CASE WHEN p.booking_id IS NOT NULL THEN 'Paid' ELSE 'Pending' END as payment_status
+            FROM Booking b
+            JOIN Car c ON b.car_id = c.car_id
+            JOIN Model m ON c.model_id = m.model_id
+            JOIN Brand br ON m.brand_id = br.brand_id
+            JOIN CarType ct ON c.carType_id = ct.carType_id
+            JOIN Customer cu ON b.cust_id = cu.cust_id
+            LEFT JOIN Payment p ON b.booking_id = p.booking_id
+            WHERE b.booking_id = :booking_id AND b.cust_id = :cust_id
+        """
+        result = Database.execute_query(query, {
+            'booking_id': booking_id,
+            'cust_id': session['user_id']
+        })
+        
+        if result:
+            booking = result[0]
+            # Convert Oracle types
+            for key, value in booking.items():
+                if isinstance(value, (int, float)):
+                    booking[key] = float(value) if '.' in str(value) else int(value)
+                elif hasattr(value, 'isoformat'):
+                    booking[key] = value.isoformat() if value else None
+            return jsonify({'success': True, 'booking': booking})
+        else:
+            return jsonify({'success': False, 'message': 'Booking not found'}), 404
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 # ==================== PAYMENT ROUTES ====================
+
+@app.route('/payment/<int:booking_id>')
+def payment_page(booking_id):
+    if 'user_id' not in session or session.get('user_type') != 'customer':
+        return redirect(url_for('login'))
+    
+    # Verify the booking belongs to this customer
+    verify_query = "SELECT booking_id FROM Booking WHERE booking_id = :booking_id AND cust_id = :cust_id"
+    result = Database.execute_query(verify_query, {
+        'booking_id': booking_id,
+        'cust_id': session['user_id']
+    })
+    
+    if not result:
+        return redirect(url_for('my_bookings'))
+    
+    return render_template('payment.html', booking_id=booking_id)
 
 @app.route('/api/payment', methods=['POST'])
 def process_payment():
@@ -860,6 +943,45 @@ def admin_add_brand():
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+# Admin: Update brand
+@app.route('/api/admin/brand/<int:brand_id>', methods=['PUT'])
+def admin_update_brand(brand_id):
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        data = request.json
+        brand_name = data.get('brand_name')
+        if not brand_name:
+            return jsonify({'success': False, 'message': 'Brand name required'}), 400
+        
+        query = "UPDATE Brand SET brand_name = :brand_name WHERE brand_id = :brand_id"
+        Database.execute_query(query, {'brand_name': brand_name, 'brand_id': brand_id}, fetch=False)
+        return jsonify({'success': True, 'message': 'Brand updated successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# Admin: Delete brand
+@app.route('/api/admin/brand/<int:brand_id>', methods=['DELETE'])
+def admin_delete_brand(brand_id):
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        # Check if brand has models
+        model_check = Database.execute_query(
+            "SELECT COUNT(*) as cnt FROM Model WHERE brand_id = :brand_id",
+            {'brand_id': brand_id}
+        )
+        if model_check and model_check[0]['CNT'] > 0:
+            return jsonify({'success': False, 'message': 'Cannot delete brand with existing models. Delete the models first.'}), 400
+        
+        query = "DELETE FROM Brand WHERE brand_id = :brand_id"
+        Database.execute_query(query, {'brand_id': brand_id}, fetch=False)
+        return jsonify({'success': True, 'message': 'Brand deleted successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 # Admin: Add model
 @app.route('/api/admin/model', methods=['POST'])
 def admin_add_model():
@@ -876,6 +998,50 @@ def admin_add_model():
         query = "INSERT INTO Model (model_name, brand_id) VALUES (:model_name, :brand_id)"
         Database.execute_query(query, {'model_name': model_name, 'brand_id': int(brand_id)}, fetch=False)
         return jsonify({'success': True, 'message': 'Model added successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# Admin: Update model
+@app.route('/api/admin/model/<int:model_id>', methods=['PUT'])
+def admin_update_model(model_id):
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        data = request.json
+        model_name = data.get('model_name')
+        brand_id = data.get('brand_id')
+        if not model_name or not brand_id:
+            return jsonify({'success': False, 'message': 'Model name and brand_id required'}), 400
+        
+        query = "UPDATE Model SET model_name = :model_name, brand_id = :brand_id WHERE model_id = :model_id"
+        Database.execute_query(query, {
+            'model_name': model_name, 
+            'brand_id': int(brand_id),
+            'model_id': model_id
+        }, fetch=False)
+        return jsonify({'success': True, 'message': 'Model updated successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# Admin: Delete model
+@app.route('/api/admin/model/<int:model_id>', methods=['DELETE'])
+def admin_delete_model(model_id):
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        # Check if model has cars
+        car_check = Database.execute_query(
+            "SELECT COUNT(*) as cnt FROM Car WHERE model_id = :model_id",
+            {'model_id': model_id}
+        )
+        if car_check and car_check[0]['CNT'] > 0:
+            return jsonify({'success': False, 'message': 'Cannot delete model with existing cars. Delete the cars first.'}), 400
+        
+        query = "DELETE FROM Model WHERE model_id = :model_id"
+        Database.execute_query(query, {'model_id': model_id}, fetch=False)
+        return jsonify({'success': True, 'message': 'Model deleted successfully'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 

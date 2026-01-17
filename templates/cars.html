@@ -59,7 +59,7 @@
                     </div>
                     
                     <div class="filter-widget">
-                        <label>Capacity</label>
+                        <label>Passenger Capacity</label>
                         <div class="capacity-options" id="capacity-options">
                             <!-- Capacity will be populated dynamically -->
                         </div>
@@ -86,6 +86,11 @@
 {% block scripts %}
 <script>
     let filters = {};
+    
+    // Get URL parameters for pre-filtering
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlBrand = urlParams.get('brand');
+    const urlType = urlParams.get('type');
     
     // Load filters
     fetch('/api/filters')
@@ -122,15 +127,35 @@
                     brandSelect.appendChild(option);
                 });
                 
-                // Populate capacity options
+                // Populate capacity options (passenger seats)
                 const capacityContainer = document.getElementById('capacity-options');
-                const capacities = ['0-1', '1-2', '2-3', '3-4', '4-5', '5-6', 'more'];
+                const capacities = [
+                    {value: '2', label: '2 Passengers'},
+                    {value: '4', label: '4 Passengers'},
+                    {value: '5', label: '5 Passengers'},
+                    {value: '6', label: '6 Passengers'},
+                    {value: '7', label: '7 Passengers'},
+                    {value: '8+', label: '8+ Passengers'}
+                ];
                 capacityContainer.innerHTML = capacities.map(cap => `
                     <label class="capacity-option">
-                        <input type="checkbox" value="${cap}" onchange="updateCapacityFilter()">
-                        <span>${cap}</span>
+                        <input type="checkbox" value="${cap.value}" onchange="updateCapacityFilter()">
+                        <span>${cap.label}</span>
                     </label>
                 `).join('');
+                
+                // Apply URL parameters if present
+                if (urlBrand) {
+                    brandSelect.value = urlBrand;
+                    filters.brand = urlBrand;
+                }
+                if (urlType) {
+                    typeSelect.value = urlType;
+                    filters.type = urlType;
+                }
+                
+                // Load cars after filters are set up
+                loadCars();
             }
         });
     
@@ -188,14 +213,13 @@
                 if (data.success) {
                     let cars = data.cars;
                     
-                    // Filter by capacity if set
+                    // Filter by passenger capacity (seats)
                     if (filters.capacity && filters.capacity.length > 0) {
                         cars = cars.filter(car => {
-                            const total = (car.SEAT || 0) + (car.SUITCASE || 0);
+                            const seats = car.SEAT || 0;
                             return filters.capacity.some(cap => {
-                                if (cap === 'more') return total > 6;
-                                const [min, max] = cap.split('-').map(Number);
-                                return total >= min && total <= max;
+                                if (cap === '8+') return seats >= 8;
+                                return seats == parseInt(cap);
                             });
                         });
                     }
@@ -212,10 +236,6 @@
                                      alt="${car.BRAND_NAME} ${car.MODEL_NAME}" 
                                      onerror="this.src='https://via.placeholder.com/400x250?text=Car+Image'">
                                 <div class="car-badge">RM ${parseFloat(car.RATE).toFixed(0)}/ Day</div>
-                                <div class="car-rating">
-                                    <i class="fas fa-star"></i>
-                                    <span>4.8</span>
-                                </div>
                             </div>
                             <div class="car-info">
                                 <h5>${car.BRAND_NAME} ${car.MODEL_NAME}</h5>
@@ -239,7 +259,6 @@
             });
     }
     
-    // Load cars on page load
-    loadCars();
+    // Note: Cars are loaded after filters are populated (see above)
 </script>
 {% endblock %}
