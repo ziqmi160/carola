@@ -98,17 +98,6 @@
 
 {% block scripts %}
 <script>
-    // Brand logo mapping
-    const brandLogos = {
-        'Toyota': 'toyota-logo.png',
-        'Honda': 'honda-logo.png',
-        'Perodua': 'perodua-logo.png',
-        'Proton': 'proton-logo.png',
-        'BMW': 'bmw-logo.png',
-        'Mercedes-Benz': 'mercedes-logo.png',
-        'Tesla': 'tesla-logo.png'
-    };
-    
     // Load brands
     fetch('/api/filters')
         .then(res => res.json())
@@ -117,12 +106,13 @@
                 const container = document.getElementById('brands-grid');
                 const brands = data.brands.slice(0, 8); // Show first 8 brands
                 container.innerHTML = brands.map(brand => {
-                    const logoFile = brandLogos[brand.BRAND_NAME] || null;
-                    const logoPath = logoFile ? `/uploads/brands/${logoFile}` : null;
+                    // Use uploaded logo with brand_id naming convention
+                    const logoPath = `/uploads/brands/brand_${brand.BRAND_ID}.png`;
                     return `
                         <a href="/cars?brand=${brand.BRAND_ID}" class="brand-item" title="View ${brand.BRAND_NAME} cars">
-                            ${logoPath ? `<img src="${logoPath}" alt="${brand.BRAND_NAME} Logo" class="brand-logo" onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                            <h4 style="display: none;">${brand.BRAND_NAME}</h4>` : `<h4>${brand.BRAND_NAME}</h4>`}
+                            <img src="${logoPath}" alt="${brand.BRAND_NAME} Logo" class="brand-logo" 
+                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                            <h4 style="display: none;">${brand.BRAND_NAME}</h4>
                         </a>
                     `;
                 }).join('');
@@ -192,12 +182,12 @@
                             ${imagePath ? `
                                 <div class="car-type-image-wrapper">
                                     <img src="${imagePath}" alt="${type.CARTYPE_NAME}" class="car-type-image" 
-                                         onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
-                                    <div class="car-type-label">${type.CARTYPE_NAME}</div>
+                                         onerror="this.parentElement.innerHTML='<div style=\\'height:100px\\'></div>';">
                                 </div>
-                                <h4 style="display: none;">${type.CARTYPE_NAME}</h4>
+                                <div class="car-type-label">${type.CARTYPE_NAME}</div>
                             ` : `
-                                <h4>${type.CARTYPE_NAME}</h4>
+                                <div class="car-type-image-wrapper"></div>
+                                <div class="car-type-label">${type.CARTYPE_NAME}</div>
                             `}
                         </a>
                     `;

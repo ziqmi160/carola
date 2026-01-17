@@ -1283,9 +1283,51 @@ def admin_add_brand():
         
         query = "INSERT INTO Brand (brand_name) VALUES (:brand_name)"
         Database.execute_query(query, {'brand_name': brand_name}, fetch=False)
-        return jsonify({'success': True, 'message': 'Brand added successfully'})
+        
+        # Get the newly created brand ID
+        id_query = "SELECT brand_id FROM Brand WHERE brand_name = :brand_name"
+        result = Database.execute_query(id_query, {'brand_name': brand_name})
+        brand_id = result[0]['BRAND_ID'] if result else None
+        
+        return jsonify({'success': True, 'message': 'Brand added successfully', 'brand_id': brand_id})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/admin/brand/upload-logo', methods=['POST'])
+def admin_upload_brand_logo():
+    """Upload brand logo"""
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    if 'file' not in request.files:
+        return jsonify({'success': False, 'message': 'No file provided'}), 400
+    
+    file = request.files['file']
+    brand_id = request.form.get('brand_id')
+    
+    if not brand_id:
+        return jsonify({'success': False, 'message': 'Brand ID required'}), 400
+    
+    if file.filename == '':
+        return jsonify({'success': False, 'message': 'No file selected'}), 400
+    
+    if file and allowed_file(file.filename):
+        # Create brands folder if it doesn't exist
+        brands_folder = os.path.join(app.config['UPLOAD_FOLDER'], 'brands')
+        os.makedirs(brands_folder, exist_ok=True)
+        
+        # Save with consistent naming: brand_{id}.png
+        filename = f"brand_{brand_id}.png"
+        filepath = os.path.join(brands_folder, filename)
+        
+        # Remove old logo if exists
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        
+        file.save(filepath)
+        return jsonify({'success': True, 'message': 'Logo uploaded successfully', 'filename': filename})
+    
+    return jsonify({'success': False, 'message': 'Invalid file type. Please upload an image.'}), 400
 
 # Admin: Update brand
 @app.route('/api/admin/brand/<int:brand_id>', methods=['PUT'])
