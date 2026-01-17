@@ -22,11 +22,41 @@ def allowed_file(filename):
 def index():
     return render_template('index.html')
 
+def validate_password(password):
+    """Validate password: minimum 8 characters with at least one number"""
+    if len(password) < 8:
+        return False, 'Password must be at least 8 characters long'
+    if not any(c.isdigit() for c in password):
+        return False, 'Password must contain at least one number'
+    return True, ''
+
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         data = request.json
         try:
+            # Validate password
+            password = data['password']
+            is_valid, error_msg = validate_password(password)
+            if not is_valid:
+                return jsonify({'success': False, 'message': error_msg}), 400
+            
+            # Check if email already exists
+            email_check = Database.execute_query(
+                "SELECT COUNT(*) as cnt FROM Customer WHERE cust_email = :email",
+                {'email': data['email']}
+            )
+            if email_check and email_check[0]['CNT'] > 0:
+                return jsonify({'success': False, 'message': 'Email already registered. Please use a different email or login.'}), 400
+            
+            # Check if username already exists
+            username_check = Database.execute_query(
+                "SELECT COUNT(*) as cnt FROM Customer WHERE cust_username = :username",
+                {'username': data['username']}
+            )
+            if username_check and username_check[0]['CNT'] > 0:
+                return jsonify({'success': False, 'message': 'Username already taken. Please choose a different username.'}), 400
+            
             query = """
                 INSERT INTO Customer (cust_fname, cust_lname, cust_age, cust_email, cust_phone, cust_username, cust_password)
                 VALUES (:fname, :lname, :age, :email, :phone, :username, :password)
@@ -38,12 +68,18 @@ def register():
                 'email': data['email'],
                 'phone': data.get('phone'),
                 'username': data['username'],
-                'password': data['password']
+                'password': password
             }
             Database.execute_query(query, params, fetch=False)
             return jsonify({'success': True, 'message': 'Registration successful!'})
         except Exception as e:
-            return jsonify({'success': False, 'message': str(e)}), 400
+            error_msg = str(e)
+            # Handle common database errors with user-friendly messages
+            if 'CUST_EMAIL' in error_msg and 'unique constraint' in error_msg.lower():
+                return jsonify({'success': False, 'message': 'Email already registered. Please use a different email or login.'}), 400
+            if 'CUST_USERNAME' in error_msg and 'unique constraint' in error_msg.lower():
+                return jsonify({'success': False, 'message': 'Username already taken. Please choose a different username.'}), 400
+            return jsonify({'success': False, 'message': 'Registration failed. Please try again.'}), 400
     
     # Get the 'next' parameter for redirect after registration
     next_url = request.args.get('next', '')
@@ -83,6 +119,14 @@ def login():
                 session['name'] = f"{user['STAFF_FNAME']} {user['STAFF_LNAME']}"
                 session['dept'] = user.get('STAFF_DEPT', '')
                 session['user_type'] = 'staff'
+                
+                # Check if this staff is a manager (has staff reporting to them)
+                manager_check = Database.execute_query(
+                    "SELECT COUNT(*) as cnt FROM Staff WHERE manager_id = :staff_id",
+                    {'staff_id': user['STAFF_ID']}
+                )
+                session['is_manager'] = manager_check[0]['CNT'] > 0 if manager_check else False
+                
                 return jsonify({'success': True, 'user_type': 'staff', 'message': 'Login successful!'})
             
             # If not found in either table
@@ -1110,6 +1154,243 @@ def admin_update_payment_status():
                 Database.execute_query(delete_query, {'booking_id': int(booking_id)}, fetch=False)
         
         return jsonify({'success': True, 'message': 'Payment status updated successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# ==================== STAFF MANAGEMENT (FOR MANAGERS) ====================
+
+@app.route('/api/admin/check-manager', methods=['GET'])
+def check_manager():
+    """Check if current user is a manager"""
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'is_manager': False})
+    
+    return jsonify({'success': True, 'is_manager': session.get('is_manager', False)})
+
+@app.route('/api/admin/staff', methods=['GET'])
+def get_managed_staff():
+    """Get staff members under the current manager"""
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    if not session.get('is_manager'):
+        return jsonify({'success': False, 'message': 'Only managers can access this'}), 403
+    
+    try:
+        manager_id = session['user_id']
+        query = """
+            SELECT s.staff_id, s.staff_fname, s.staff_lname, s.staff_email, 
+                   s.staff_phone, s.staff_dept, s.staff_username,
+                   (SELECT COUNT(*) FROM Staff sub WHERE sub.manager_id = s.staff_id) as subordinate_count
+            FROM Staff s
+            WHERE s.manager_id = :manager_id
+            ORDER BY s.staff_fname, s.staff_lname
+        """
+        staff = Database.execute_query(query, {'manager_id': manager_id})
+        return jsonify({'success': True, 'staff': staff})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/admin/staff', methods=['POST'])
+def add_staff():
+    """Add new staff member under current manager"""
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    if not session.get('is_manager'):
+        return jsonify({'success': False, 'message': 'Only managers can add staff'}), 403
+    
+    try:
+        data = request.json
+        manager_id = session['user_id']
+        
+        # Validate password
+        password = data.get('password', '')
+        is_valid, error_msg = validate_password(password)
+        if not is_valid:
+            return jsonify({'success': False, 'message': error_msg}), 400
+        
+        # Check if username already exists
+        username_check = Database.execute_query(
+            "SELECT COUNT(*) as cnt FROM Staff WHERE staff_username = :username",
+            {'username': data['username']}
+        )
+        if username_check and username_check[0]['CNT'] > 0:
+            return jsonify({'success': False, 'message': 'Username already exists'}), 400
+        
+        # Check if email already exists
+        email_check = Database.execute_query(
+            "SELECT COUNT(*) as cnt FROM Staff WHERE staff_email = :email",
+            {'email': data['email']}
+        )
+        if email_check and email_check[0]['CNT'] > 0:
+            return jsonify({'success': False, 'message': 'Email already exists'}), 400
+        
+        query = """
+            INSERT INTO Staff (staff_fname, staff_lname, staff_email, staff_phone, staff_dept, staff_username, staff_password, manager_id)
+            VALUES (:fname, :lname, :email, :phone, :dept, :username, :password, :manager_id)
+        """
+        Database.execute_query(query, {
+            'fname': data['fname'],
+            'lname': data['lname'],
+            'email': data['email'],
+            'phone': data.get('phone', ''),
+            'dept': data.get('dept', ''),
+            'username': data['username'],
+            'password': data['password'],
+            'manager_id': manager_id
+        }, fetch=False)
+        
+        return jsonify({'success': True, 'message': 'Staff added successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/admin/staff/<int:staff_id>', methods=['GET'])
+def get_staff_member(staff_id):
+    """Get single staff member details"""
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    if not session.get('is_manager'):
+        return jsonify({'success': False, 'message': 'Only managers can access this'}), 403
+    
+    try:
+        manager_id = session['user_id']
+        query = """
+            SELECT staff_id, staff_fname, staff_lname, staff_email, staff_phone, staff_dept, staff_username
+            FROM Staff
+            WHERE staff_id = :staff_id AND manager_id = :manager_id
+        """
+        result = Database.execute_query(query, {'staff_id': staff_id, 'manager_id': manager_id})
+        
+        if not result:
+            return jsonify({'success': False, 'message': 'Staff not found or not under your management'}), 404
+        
+        return jsonify({'success': True, 'staff': result[0]})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/admin/staff/<int:staff_id>', methods=['PUT'])
+def update_staff(staff_id):
+    """Update staff member under current manager"""
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    if not session.get('is_manager'):
+        return jsonify({'success': False, 'message': 'Only managers can update staff'}), 403
+    
+    try:
+        data = request.json
+        manager_id = session['user_id']
+        
+        # Verify staff is under this manager
+        verify = Database.execute_query(
+            "SELECT staff_id FROM Staff WHERE staff_id = :staff_id AND manager_id = :manager_id",
+            {'staff_id': staff_id, 'manager_id': manager_id}
+        )
+        if not verify:
+            return jsonify({'success': False, 'message': 'Staff not found or not under your management'}), 404
+        
+        # Check if username already exists (exclude current staff)
+        if 'username' in data:
+            username_check = Database.execute_query(
+                "SELECT COUNT(*) as cnt FROM Staff WHERE staff_username = :username AND staff_id != :staff_id",
+                {'username': data['username'], 'staff_id': staff_id}
+            )
+            if username_check and username_check[0]['CNT'] > 0:
+                return jsonify({'success': False, 'message': 'Username already exists'}), 400
+        
+        # Check if email already exists (exclude current staff)
+        if 'email' in data:
+            email_check = Database.execute_query(
+                "SELECT COUNT(*) as cnt FROM Staff WHERE staff_email = :email AND staff_id != :staff_id",
+                {'email': data['email'], 'staff_id': staff_id}
+            )
+            if email_check and email_check[0]['CNT'] > 0:
+                return jsonify({'success': False, 'message': 'Email already exists'}), 400
+        
+        # Build update query
+        update_fields = []
+        params = {'staff_id': staff_id}
+        
+        if 'fname' in data:
+            update_fields.append('staff_fname = :fname')
+            params['fname'] = data['fname']
+        if 'lname' in data:
+            update_fields.append('staff_lname = :lname')
+            params['lname'] = data['lname']
+        if 'email' in data:
+            update_fields.append('staff_email = :email')
+            params['email'] = data['email']
+        if 'phone' in data:
+            update_fields.append('staff_phone = :phone')
+            params['phone'] = data['phone']
+        if 'dept' in data:
+            update_fields.append('staff_dept = :dept')
+            params['dept'] = data['dept']
+        if 'username' in data:
+            update_fields.append('staff_username = :username')
+            params['username'] = data['username']
+        if 'password' in data and data['password']:
+            # Validate new password
+            is_valid, error_msg = validate_password(data['password'])
+            if not is_valid:
+                return jsonify({'success': False, 'message': error_msg}), 400
+            update_fields.append('staff_password = :password')
+            params['password'] = data['password']
+        
+        if update_fields:
+            query = f"UPDATE Staff SET {', '.join(update_fields)} WHERE staff_id = :staff_id"
+            Database.execute_query(query, params, fetch=False)
+        
+        return jsonify({'success': True, 'message': 'Staff updated successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+@app.route('/api/admin/staff/<int:staff_id>', methods=['DELETE'])
+def delete_staff(staff_id):
+    """Delete staff member under current manager"""
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    if not session.get('is_manager'):
+        return jsonify({'success': False, 'message': 'Only managers can delete staff'}), 403
+    
+    try:
+        manager_id = session['user_id']
+        
+        # Verify staff is under this manager
+        verify = Database.execute_query(
+            "SELECT staff_id FROM Staff WHERE staff_id = :staff_id AND manager_id = :manager_id",
+            {'staff_id': staff_id, 'manager_id': manager_id}
+        )
+        if not verify:
+            return jsonify({'success': False, 'message': 'Staff not found or not under your management'}), 404
+        
+        # Check if staff has subordinates
+        subordinate_check = Database.execute_query(
+            "SELECT COUNT(*) as cnt FROM Staff WHERE manager_id = :staff_id",
+            {'staff_id': staff_id}
+        )
+        if subordinate_check and subordinate_check[0]['CNT'] > 0:
+            return jsonify({'success': False, 'message': 'Cannot delete staff with subordinates. Reassign their staff first.'}), 400
+        
+        # Check if staff has bookings
+        booking_check = Database.execute_query(
+            "SELECT COUNT(*) as cnt FROM Booking WHERE staff_id = :staff_id",
+            {'staff_id': staff_id}
+        )
+        if booking_check and booking_check[0]['CNT'] > 0:
+            return jsonify({'success': False, 'message': 'Cannot delete staff with existing bookings'}), 400
+        
+        # Delete staff
+        Database.execute_query(
+            "DELETE FROM Staff WHERE staff_id = :staff_id",
+            {'staff_id': staff_id},
+            fetch=False
+        )
+        
+        return jsonify({'success': True, 'message': 'Staff deleted successfully'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 

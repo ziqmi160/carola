@@ -19,6 +19,9 @@
             <button class="tab-btn" onclick="switchTab('brands')">
                 <i class="fas fa-tag"></i> Brands & Models
             </button>
+            <button class="tab-btn" id="staff-tab-btn" onclick="switchTab('staff')" style="display: none;">
+                <i class="fas fa-users"></i> Staff Management
+            </button>
         </div>
         
         <!-- Cars Tab -->
@@ -94,6 +97,19 @@
             </div>
             <div id="brands-container">
                 <div class="loading">Loading brands and models...</div>
+            </div>
+        </div>
+        
+        <!-- Staff Management Tab (Only for Managers) -->
+        <div id="tab-staff" class="tab-content">
+            <div class="admin-section-header">
+                <h2>Staff Management</h2>
+                <button class="btn btn-primary" onclick="showAddStaffModal()">
+                    <i class="fas fa-plus"></i> Add New Staff
+                </button>
+            </div>
+            <div id="staff-container">
+                <div class="loading">Loading staff...</div>
             </div>
         </div>
     </div>
@@ -304,6 +320,59 @@
         </form>
     </div>
 </div>
+
+<!-- Add/Edit Staff Modal -->
+<div id="staffModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="staff-modal-title">Add New Staff</h2>
+            <span class="close" onclick="closeStaffModal()">&times;</span>
+        </div>
+        <form onsubmit="saveStaff(event)">
+            <input type="hidden" id="edit_staff_id">
+            <div class="form-row">
+                <div class="form-group">
+                    <label>First Name <span class="required">*</span></label>
+                    <input type="text" id="staff_fname" required>
+                </div>
+                <div class="form-group">
+                    <label>Last Name <span class="required">*</span></label>
+                    <input type="text" id="staff_lname" required>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Email <span class="required">*</span></label>
+                    <input type="email" id="staff_email" required>
+                </div>
+                <div class="form-group">
+                    <label>Phone</label>
+                    <input type="tel" id="staff_phone">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Department</label>
+                <input type="text" id="staff_dept" placeholder="e.g. Sales, Operations, Customer Service">
+            </div>
+            <div class="form-row">
+                <div class="form-group">
+                    <label>Username <span class="required">*</span></label>
+                    <input type="text" id="staff_username" required>
+                </div>
+                <div class="form-group">
+                    <label>Password <span class="required" id="password-required">*</span></label>
+                    <input type="password" id="staff_password" required minlength="8">
+                    <small class="password-requirement">Min 8 characters with at least one number</small>
+                    <small id="password-hint" style="display: none; color: var(--text-secondary);">Leave blank to keep current password</small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeStaffModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save Staff</button>
+            </div>
+        </form>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -415,6 +484,8 @@
             loadBookings();
         } else if (tab === 'brands') {
             loadBrandsAndModels();
+        } else if (tab === 'staff') {
+            loadStaff();
         }
     }
     
@@ -1084,7 +1155,226 @@
             });
     }
     
+    // ==================== STAFF MANAGEMENT ====================
+    
+    let isManager = false;
+    
+    // Password validation function
+    function validatePassword(password) {
+        if (password.length < 8) {
+            return { valid: false, message: 'Password must be at least 8 characters long' };
+        }
+        if (!/\d/.test(password)) {
+            return { valid: false, message: 'Password must contain at least one number' };
+        }
+        return { valid: true };
+    }
+    
+    // Check if user is manager and show staff tab
+    function checkManagerStatus() {
+        fetch('/api/admin/check-manager')
+            .then(res => res.json())
+            .then(data => {
+                isManager = data.is_manager;
+                if (isManager) {
+                    document.getElementById('staff-tab-btn').style.display = 'inline-flex';
+                }
+            });
+    }
+    
+    // Load staff
+    function loadStaff() {
+        if (!isManager) return;
+        
+        const container = document.getElementById('staff-container');
+        container.innerHTML = '<div class="loading">Loading staff...</div>';
+        
+        fetch('/api/admin/staff')
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.staff.length === 0) {
+                        container.innerHTML = '<p class="no-results">No staff members under your management. Click "Add New Staff" to add one.</p>';
+                        return;
+                    }
+                    
+                    container.innerHTML = `
+                        <div class="admin-table-container">
+                            <table class="admin-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 80px;">ID</th>
+                                        <th>Name</th>
+                                        <th>Email</th>
+                                        <th>Phone</th>
+                                        <th>Department</th>
+                                        <th>Username</th>
+                                        <th style="width: 200px;">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${data.staff.map(s => `
+                                        <tr>
+                                            <td>#${s.STAFF_ID}</td>
+                                            <td>
+                                                <strong>${s.STAFF_FNAME} ${s.STAFF_LNAME}</strong>
+                                                ${s.SUBORDINATE_COUNT > 0 ? `<br><small style="color: var(--primary-color);"><i class="fas fa-users"></i> ${s.SUBORDINATE_COUNT} staff</small>` : ''}
+                                            </td>
+                                            <td>${s.STAFF_EMAIL}</td>
+                                            <td>${s.STAFF_PHONE || 'N/A'}</td>
+                                            <td>${s.STAFF_DEPT || 'N/A'}</td>
+                                            <td>${s.STAFF_USERNAME}</td>
+                                            <td style="white-space: nowrap;">
+                                                <button class="btn btn-sm btn-primary" onclick="editStaff(${s.STAFF_ID})">
+                                                    <i class="fas fa-edit"></i> Edit
+                                                </button>
+                                                <button class="btn btn-sm btn-danger" onclick="deleteStaff(${s.STAFF_ID})">
+                                                    <i class="fas fa-trash"></i> Delete
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = `<p class="error">${data.message}</p>`;
+                }
+            })
+            .catch(err => {
+                container.innerHTML = '<p class="error">Failed to load staff.</p>';
+                console.error('Error:', err);
+            });
+    }
+    
+    // Show add staff modal
+    function showAddStaffModal() {
+        document.getElementById('staff-modal-title').textContent = 'Add New Staff';
+        document.getElementById('edit_staff_id').value = '';
+        document.getElementById('staff_fname').value = '';
+        document.getElementById('staff_lname').value = '';
+        document.getElementById('staff_email').value = '';
+        document.getElementById('staff_phone').value = '';
+        document.getElementById('staff_dept').value = '';
+        document.getElementById('staff_username').value = '';
+        document.getElementById('staff_password').value = '';
+        document.getElementById('staff_password').required = true;
+        document.getElementById('password-required').style.display = 'inline';
+        document.getElementById('password-hint').style.display = 'none';
+        document.getElementById('staffModal').style.display = 'block';
+    }
+    
+    // Edit staff
+    function editStaff(staffId) {
+        fetch(`/api/admin/staff/${staffId}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    const s = data.staff;
+                    document.getElementById('staff-modal-title').textContent = 'Edit Staff';
+                    document.getElementById('edit_staff_id').value = s.STAFF_ID;
+                    document.getElementById('staff_fname').value = s.STAFF_FNAME;
+                    document.getElementById('staff_lname').value = s.STAFF_LNAME;
+                    document.getElementById('staff_email').value = s.STAFF_EMAIL;
+                    document.getElementById('staff_phone').value = s.STAFF_PHONE || '';
+                    document.getElementById('staff_dept').value = s.STAFF_DEPT || '';
+                    document.getElementById('staff_username').value = s.STAFF_USERNAME;
+                    document.getElementById('staff_password').value = '';
+                    document.getElementById('staff_password').required = false;
+                    document.getElementById('password-required').style.display = 'none';
+                    document.getElementById('password-hint').style.display = 'block';
+                    document.getElementById('staffModal').style.display = 'block';
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+    }
+    
+    // Close staff modal
+    function closeStaffModal() {
+        document.getElementById('staffModal').style.display = 'none';
+    }
+    
+    // Save staff
+    function saveStaff(event) {
+        event.preventDefault();
+        const staffId = document.getElementById('edit_staff_id').value;
+        const password = document.getElementById('staff_password').value;
+        
+        // Validate password for new staff or if password is being changed
+        if (!staffId || password) {
+            if (!staffId && !password) {
+                alert('Password is required for new staff');
+                return;
+            }
+            if (password) {
+                const passwordCheck = validatePassword(password);
+                if (!passwordCheck.valid) {
+                    alert(passwordCheck.message);
+                    return;
+                }
+            }
+        }
+        
+        const data = {
+            fname: document.getElementById('staff_fname').value,
+            lname: document.getElementById('staff_lname').value,
+            email: document.getElementById('staff_email').value,
+            phone: document.getElementById('staff_phone').value,
+            dept: document.getElementById('staff_dept').value,
+            username: document.getElementById('staff_username').value
+        };
+        
+        if (password) {
+            data.password = password;
+        }
+        
+        const url = staffId ? `/api/admin/staff/${staffId}` : '/api/admin/staff';
+        const method = staffId ? 'PUT' : 'POST';
+        
+        fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert(staffId ? 'Staff updated successfully!' : 'Staff added successfully!');
+                    closeStaffModal();
+                    loadStaff();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(err => {
+                alert('Error: ' + err.message);
+            });
+    }
+    
+    // Delete staff
+    function deleteStaff(staffId) {
+        if (!confirm('Are you sure you want to delete this staff member? This action cannot be undone.')) {
+            return;
+        }
+        
+        fetch(`/api/admin/staff/${staffId}`, {
+            method: 'DELETE'
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Staff deleted successfully!');
+                    loadStaff();
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            });
+    }
+    
     // Initialize on page load
     initAdmin();
+    checkManagerStatus();
 </script>
 {% endblock %}

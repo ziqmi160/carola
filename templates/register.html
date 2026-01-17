@@ -37,7 +37,8 @@
             </div>
             <div class="form-group">
                 <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
+                <input type="password" id="password" name="password" required minlength="8">
+                <small class="password-hint">Minimum 8 characters with at least one number</small>
             </div>
             <button type="submit" class="btn btn-primary btn-block">Register</button>
             <p class="auth-link">Already have an account? <a href="{{ url_for('login') }}{% if next_url %}?next={{ next_url }}{% endif %}">Login here</a></p>
@@ -52,8 +53,31 @@
     // Get the redirect URL from the template
     const nextUrl = "{{ next_url | default('', true) }}";
     
+    // Password validation function
+    function validatePassword(password) {
+        if (password.length < 8) {
+            return { valid: false, message: 'Password must be at least 8 characters long' };
+        }
+        if (!/\d/.test(password)) {
+            return { valid: false, message: 'Password must contain at least one number' };
+        }
+        return { valid: true };
+    }
+    
     document.getElementById('registerForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        
+        const password = document.getElementById('password').value;
+        const messageDiv = document.getElementById('message');
+        
+        // Validate password
+        const passwordCheck = validatePassword(password);
+        if (!passwordCheck.valid) {
+            messageDiv.className = 'message error';
+            messageDiv.textContent = passwordCheck.message;
+            return;
+        }
+        
         const formData = {
             fname: document.getElementById('fname').value,
             lname: document.getElementById('lname').value,
@@ -61,10 +85,9 @@
             phone: document.getElementById('phone').value,
             age: document.getElementById('age').value ? parseInt(document.getElementById('age').value) : null,
             username: document.getElementById('username').value,
-            password: document.getElementById('password').value
+            password: password
         };
         
-        const messageDiv = document.getElementById('message');
         messageDiv.className = 'message';
         messageDiv.textContent = 'Registering...';
         
