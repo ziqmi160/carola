@@ -228,3 +228,4 @@ SELECT 'Total Locations: ' || COUNT(*) as result FROM Location;
 SELECT location_id, location_name, city, is_airport FROM Location ORDER BY location_id;
 
 
+

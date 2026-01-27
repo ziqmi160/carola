@@ -614,17 +614,28 @@ def get_model(model_id):
             'display_name': f"{'✈️ ' if row['IS_AIRPORT'] == 1 else '📍 '}{row['LOCATION_NAME']} ({row['CITY']}) - {row['AVAILABLE_COUNT']} available"
         } for row in locations_result] if locations_result else []
         
-        # Get fuel type
+        # Get fuel type and fuel-specific details from first car of this model
         fuel_query = """
-            SELECT CASE 
-                WHEN EXISTS (SELECT 1 FROM Petrol p JOIN Car c ON p.car_id = c.car_id WHERE c.model_id = :model_id) THEN 'Petrol'
-                WHEN EXISTS (SELECT 1 FROM Diesel d JOIN Car c ON d.car_id = c.car_id WHERE c.model_id = :model_id) THEN 'Diesel'
-                WHEN EXISTS (SELECT 1 FROM Electric e JOIN Car c ON e.car_id = c.car_id WHERE c.model_id = :model_id) THEN 'Electric'
-                ELSE 'N/A'
-            END as fuel_type FROM DUAL
+            SELECT 
+                CASE 
+                    WHEN p.car_id IS NOT NULL THEN 'Petrol'
+                    WHEN d.car_id IS NOT NULL THEN 'Diesel'
+                    WHEN e.car_id IS NOT NULL THEN 'Electric'
+                    ELSE 'N/A'
+                END as fuel_type,
+                p.octane_rating, p.fuel_tank_capacity as petrol_tank,
+                d.diesel_emission, d.fuel_tank_capacity as diesel_tank,
+                e.battery_range, e.charging_rate_kw
+            FROM Car c
+            LEFT JOIN Petrol p ON c.car_id = p.car_id
+            LEFT JOIN Diesel d ON c.car_id = d.car_id
+            LEFT JOIN Electric e ON c.car_id = e.car_id
+            WHERE c.model_id = :model_id
+            AND ROWNUM = 1
         """
         fuel_result = Database.execute_query(fuel_query, {'model_id': model_id})
-        fuel_type = fuel_result[0]['FUEL_TYPE'] if fuel_result else 'N/A'
+        fuel_data = fuel_result[0] if fuel_result else {}
+        fuel_type = fuel_data.get('FUEL_TYPE', 'N/A') if fuel_data else 'N/A'
         
         return jsonify({
             'success': True,
@@ -641,7 +652,13 @@ def get_model(model_id):
                 'COLOUR': model['COLOUR'],
                 'ALLOWS_DIFFERENT_DROPOFF': model['ALLOWS_DIFFERENT_DROPOFF'],
                 'ATTACHMENTS': model['ATTACHMENTS'],
-                'FUEL_TYPE': fuel_type
+                'FUEL_TYPE': fuel_type,
+                'OCTANE_RATING': fuel_data.get('OCTANE_RATING') if fuel_data else None,
+                'PETROL_TANK': fuel_data.get('PETROL_TANK') if fuel_data else None,
+                'DIESEL_EMISSION': fuel_data.get('DIESEL_EMISSION') if fuel_data else None,
+                'DIESEL_TANK': fuel_data.get('DIESEL_TANK') if fuel_data else None,
+                'BATTERY_RANGE': fuel_data.get('BATTERY_RANGE') if fuel_data else None,
+                'CHARGING_RATE_KW': fuel_data.get('CHARGING_RATE_KW') if fuel_data else None
             },
             'locations': locations
         })
@@ -1429,21 +1446,12 @@ def admin_create_car():
         location_id = request.form.get('location_id')  # Single location where car is
         allows_different_dropoff = 1 if request.form.get('allows_different_dropoff') == '1' else 0
         
-        # Handle image upload
-        filename = None
-        if 'attachments' in request.files:
-            file = request.files['attachments']
-            if file and file.filename != '' and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(filepath)
-        
-        # Insert car with location_id
+        # Insert car with location_id (images are managed at Model level)
         car_query = """
             INSERT INTO Car (model_id, carType_id, rate, description, door, suitcase, seat, colour,
-                           attachments, location_id, allows_different_dropoff)
+                           location_id, allows_different_dropoff)
             VALUES (:model_id, :carType_id, :rate, :description, :door, :suitcase, :seat, :colour,
-                   :attachments, :location_id, :allows_different_dropoff)
+                   :location_id, :allows_different_dropoff)
         """
         
         car_params = {
@@ -1455,7 +1463,6 @@ def admin_create_car():
             'suitcase': int(suitcase) if suitcase else None,
             'seat': int(seat) if seat else None,
             'colour': colour if colour else None,
-            'attachments': filename,
             'location_id': int(location_id) if location_id else None,
             'allows_different_dropoff': allows_different_dropoff
         }
@@ -1546,16 +1553,7 @@ def admin_update_car(car_id):
         location_id = request.form.get('location_id')  # Single location where car is
         allows_different_dropoff = 1 if request.form.get('allows_different_dropoff') == '1' else 0
         
-        # Handle image upload
-        filename = None
-        if 'attachments' in request.files:
-            file = request.files['attachments']
-            if file and file.filename != '' and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(filepath)
-        
-        # Update car
+        # Update car (images are managed at Model level)
         car_params = {
             'car_id': car_id,
             'model_id': model_id,
@@ -1570,23 +1568,13 @@ def admin_update_car(car_id):
             'allows_different_dropoff': allows_different_dropoff
         }
         
-        if filename:
-            car_params['attachments'] = filename
-            car_query = """
-                UPDATE Car SET model_id = :model_id, carType_id = :carType_id, rate = :rate,
-                             description = :description, door = :door, suitcase = :suitcase, seat = :seat,
-                             colour = :colour, attachments = :attachments,
-                             location_id = :location_id, allows_different_dropoff = :allows_different_dropoff
-                WHERE car_id = :car_id
-            """
-        else:
-            car_query = """
-                UPDATE Car SET model_id = :model_id, carType_id = :carType_id, rate = :rate,
-                             description = :description, door = :door, suitcase = :suitcase, seat = :seat,
-                             colour = :colour,
-                             location_id = :location_id, allows_different_dropoff = :allows_different_dropoff
-                WHERE car_id = :car_id
-            """
+        car_query = """
+            UPDATE Car SET model_id = :model_id, carType_id = :carType_id, rate = :rate,
+                         description = :description, door = :door, suitcase = :suitcase, seat = :seat,
+                         colour = :colour,
+                         location_id = :location_id, allows_different_dropoff = :allows_different_dropoff
+            WHERE car_id = :car_id
+        """
         
         Database.execute_query(car_query, car_params, fetch=False)
         
@@ -2321,42 +2309,8 @@ def uploaded_file(filename):
 
 @app.route('/api/upload-car-image', methods=['POST'])
 def upload_car_image():
-    """Upload car image and update database"""
-    if 'user_id' not in session or session.get('user_type') != 'staff':
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
-    
-    if 'file' not in request.files:
-        return jsonify({'success': False, 'message': 'No file provided'}), 400
-    
-    file = request.files['file']
-    car_id = request.form.get('car_id')
-    
-    if not car_id:
-        return jsonify({'success': False, 'message': 'Car ID required'}), 400
-    
-    if file.filename == '':
-        return jsonify({'success': False, 'message': 'No file selected'}), 400
-    
-    if file and allowed_file(file.filename):
-        filename = secure_filename(f"car_{car_id}_{file.filename}")
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-        
-        # Update database
-        try:
-            update_query = "UPDATE Car SET attachments = :filename WHERE car_id = :car_id"
-            Database.execute_query(update_query, {
-                'filename': filename,
-                'car_id': int(car_id)
-            }, fetch=False)
-            return jsonify({'success': True, 'message': 'Image uploaded successfully', 'filename': filename})
-        except Exception as e:
-            # Delete file if database update fails
-            if os.path.exists(filepath):
-                os.remove(filepath)
-            return jsonify({'success': False, 'message': str(e)}), 500
-    
-    return jsonify({'success': False, 'message': 'Invalid file type'}), 400
+    """Deprecated - Images are now managed at Model level"""
+    return jsonify({'success': False, 'message': 'Images are now managed at Model level. Use the Models tab to upload images.'}), 400
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

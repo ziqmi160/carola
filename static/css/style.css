@@ -1279,6 +1279,51 @@ a.brand-item {
     font-size: 1.1rem;
 }
 
+.fuel-specs .spec-item {
+    display: inline-flex;
+    margin-right: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.petrol-specs {
+    background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+    border-left: 4px solid #f59e0b;
+}
+
+.petrol-specs h4 {
+    color: #b45309;
+}
+
+.petrol-specs i {
+    color: #f59e0b;
+}
+
+.diesel-specs {
+    background: linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%);
+    border-left: 4px solid #6b7280;
+}
+
+.diesel-specs h4 {
+    color: #4b5563;
+}
+
+.diesel-specs i {
+    color: #6b7280;
+}
+
+.electric-specs {
+    background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+    border-left: 4px solid #10b981;
+}
+
+.electric-specs h4 {
+    color: #047857;
+}
+
+.electric-specs i {
+    color: #10b981;
+}
+
 .spec-item {
     display: flex;
     align-items: center;
