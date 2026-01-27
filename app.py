@@ -296,8 +296,7 @@ def get_cars():
             # Note: Show all cars except 'In Maintenance' - rented/dirty cars can still be booked for future dates
             query = """
                 SELECT c.car_id, c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
-                       c.pickup_location, c.dropoff_location, c.available_locations, c.allows_different_dropoff,
-                       m.attachments, NVL(c.car_status, 'Available') as car_status,
+                       c.allows_different_dropoff, m.attachments, NVL(c.car_status, 'Available') as car_status,
                        c.location_id,
                        l.location_name as home_location, l.city as home_city,
                        m.model_id, m.model_name, b.brand_name, ct.carType_name,
@@ -322,8 +321,7 @@ def get_cars():
             query = """
                 SELECT * FROM (
                     SELECT c.car_id, c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
-                           c.pickup_location, c.dropoff_location, c.available_locations, c.allows_different_dropoff,
-                           m.attachments, NVL(c.car_status, 'Available') as car_status,
+                           c.allows_different_dropoff, m.attachments, NVL(c.car_status, 'Available') as car_status,
                            c.location_id,
                            l.location_name as home_location, l.city as home_city,
                            m.model_id, m.model_name, b.brand_name, ct.carType_name,
@@ -426,8 +424,7 @@ def get_car(car_id):
     try:
         query = """
             SELECT c.car_id, c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
-                   c.pickup_location, c.dropoff_location, c.available_locations, c.allows_different_dropoff,
-                   m.attachments, c.location_id,
+                   c.allows_different_dropoff, m.attachments, c.location_id,
                    l.location_name as home_location, l.city as home_city, l.is_airport,
                    m.model_name, b.brand_name, ct.carType_name,
                    CASE 
@@ -1339,7 +1336,7 @@ def admin_get_cars():
     try:
         query = """
             SELECT c.car_id, c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
-                   m.attachments, c.pickup_location, c.dropoff_location, c.available_locations,
+                   m.attachments, c.allows_different_dropoff,
                    NVL(c.car_status, 'Available') as car_status,
                    c.location_id,
                    l.location_name as home_location, l.city as home_city,
@@ -1377,8 +1374,7 @@ def admin_get_car(car_id):
     try:
         query = """
             SELECT c.car_id, c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
-                   m.attachments, c.pickup_location, c.dropoff_location, c.available_locations,
-                   c.allows_different_dropoff, NVL(c.car_status, 'Available') as car_status,
+                   m.attachments, c.allows_different_dropoff, NVL(c.car_status, 'Available') as car_status,
                    c.location_id,
                    m.model_id, m.model_name, b.brand_id, b.brand_name, ct.carType_id, ct.carType_name,
                    CASE 
