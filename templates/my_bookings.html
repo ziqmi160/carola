@@ -2,6 +2,49 @@
 
 {% block title %}My Bookings - Carola Car Rental{% endblock %}
 
+{% block extra_css %}
+<style>
+    .status-badges {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+    
+    .booking-status-badge, .payment-status-badge {
+        padding: 0.35rem 0.75rem;
+        border-radius: 1rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    
+    .booking-status-badge.confirmed { background: #dbeafe; color: #1e40af; }
+    .booking-status-badge.in-progress { background: #fef3c7; color: #92400e; }
+    .booking-status-badge.completed { background: #d1fae5; color: #065f46; }
+    .booking-status-badge.cancelled { background: #fee2e2; color: #991b1b; }
+    
+    .payment-status-badge.paid { background: #d1fae5; color: #065f46; }
+    .payment-status-badge.pending { background: #fef3c7; color: #92400e; }
+    
+    .booking-card.cancelled {
+        opacity: 0.7;
+        border-left: 4px solid #ef4444;
+    }
+    
+    .booking-card.in-progress {
+        border-left: 4px solid #f59e0b;
+    }
+    
+    .booking-card.completed {
+        border-left: 4px solid #10b981;
+    }
+    
+    .cancelled-notice {
+        color: #991b1b;
+        font-style: italic;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="bookings-page">
     <div class="container">
@@ -67,11 +110,22 @@
                             return date.toLocaleDateString('en-GB') + ' at ' + date.toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'});
                         };
                         
+                        const bookingStatus = booking.BOOKING_STATUS || 'Confirmed';
+                        const statusIcon = {
+                            'Confirmed': '📋',
+                            'In Progress': '🚗',
+                            'Completed': '✅',
+                            'Cancelled': '❌'
+                        }[bookingStatus] || '📋';
+                        
                         return `
-                            <div class="booking-card ${isPast ? 'past' : ''}">
+                            <div class="booking-card ${isPast ? 'past' : ''} ${bookingStatus.toLowerCase().replace(' ', '-')}">
                                 <div class="booking-header">
                                     <h3>${booking.BRAND_NAME} ${booking.MODEL_NAME}</h3>
-                                    <span class="booking-status ${isPaid ? 'paid' : 'pending'}">${booking.PAYMENT_STATUS}</span>
+                                    <div class="status-badges">
+                                        <span class="booking-status-badge ${bookingStatus.toLowerCase().replace(' ', '-')}">${statusIcon} ${bookingStatus}</span>
+                                        <span class="payment-status-badge ${isPaid ? 'paid' : 'pending'}">${isPaid ? '💰 Paid' : '⏳ Pending'}</span>
+                                    </div>
                                 </div>
                                 <div class="booking-details">
                                     <div class="detail-item">
@@ -98,11 +152,13 @@
                                     </div>
                                 </div>
                                 <div class="booking-actions">
-                                    ${!isPaid ? `
+                                    ${bookingStatus === 'Cancelled' ? `
+                                        <span class="cancelled-notice">This booking has been cancelled</span>
+                                    ` : !isPaid ? `
                                         <a href="/payment/${booking.BOOKING_ID}" class="btn btn-primary">
                                             <i class="fas fa-credit-card"></i> Pay Now - RM ${parseFloat(booking.PRICE).toFixed(2)}
                                         </a>
-                                        ${pickupDate > new Date() ? `
+                                        ${pickupDate > new Date() && bookingStatus === 'Confirmed' ? `
                                             <button class="btn btn-danger" onclick="cancelBooking(${booking.BOOKING_ID})">
                                                 <i class="fas fa-times"></i> Cancel
                                             </button>

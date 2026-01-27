@@ -998,7 +998,21 @@ a.brand-item {
     font-size: 1.35rem;
     font-weight: 700;
     color: var(--text-primary);
+    margin-bottom: 8px;
+}
+
+.car-location-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
     margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.car-location-badge .location-icon {
+    font-size: 0.9rem;
 }
 
 .car-card-listing .car-description {

@@ -67,10 +67,15 @@
                         </div>
                     </div>
                     
-                    <div class="secure-notice">
-                        <i class="fas fa-shield-alt"></i>
-                        <span>Your payment information is secure and encrypted</span>
-                    </div>
+                <div class="payment-timer-warning" id="payment-timer">
+                    <i class="fas fa-clock"></i>
+                    <span>Complete payment within <strong id="countdown">15:00</strong></span>
+                </div>
+                
+                <div class="secure-notice">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Your payment information is secure and encrypted</span>
+                </div>
                     
                     <button type="submit" class="btn btn-primary btn-block btn-large" id="payBtn">
                         <i class="fas fa-lock"></i> Pay Now <span id="pay-amount"></span>
@@ -203,6 +208,41 @@
     font-size: 1.1rem;
     padding: 1rem;
     letter-spacing: 1px;
+}
+
+.payment-timer-warning {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 1rem;
+    background: #fef3c7;
+    color: #92400e;
+    border-radius: 0.5rem;
+    margin: 1rem 0;
+    font-size: 0.95rem;
+    border: 1px solid #fcd34d;
+}
+
+.payment-timer-warning i {
+    font-size: 1.2rem;
+    animation: pulse 1s infinite;
+}
+
+.payment-timer-warning.urgent {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #fca5a5;
+}
+
+.payment-timer-warning.expired {
+    background: #fee2e2;
+    color: #991b1b;
+    border-color: #f87171;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
 }
 
 .secure-notice {
@@ -359,6 +399,79 @@
 <script>
     const bookingId = document.getElementById('booking_id').value;
     let bookingData = null;
+    let countdownInterval = null;
+    
+    // Check time remaining and start countdown
+    function startCountdown() {
+        fetch(`/api/booking/${bookingId}/time-remaining`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    if (data.status === 'paid') {
+                        window.location.href = '/my-bookings';
+                        return;
+                    }
+                    
+                    if (data.status === 'cancelled' || data.status === 'expired') {
+                        showExpired();
+                        return;
+                    }
+                    
+                    if (data.status === 'pending' && data.seconds_remaining > 0) {
+                        runCountdown(data.seconds_remaining);
+                    }
+                }
+            })
+            .catch(err => console.error('Error checking time:', err));
+    }
+    
+    function runCountdown(seconds) {
+        const timerDiv = document.getElementById('payment-timer');
+        const countdownSpan = document.getElementById('countdown');
+        
+        countdownInterval = setInterval(() => {
+            seconds--;
+            
+            if (seconds <= 0) {
+                clearInterval(countdownInterval);
+                showExpired();
+                return;
+            }
+            
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            countdownSpan.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+            
+            // Change color when urgent (less than 3 minutes)
+            if (seconds <= 180) {
+                timerDiv.classList.add('urgent');
+            }
+        }, 1000);
+    }
+    
+    function showExpired() {
+        const timerDiv = document.getElementById('payment-timer');
+        const payBtn = document.getElementById('payBtn');
+        const form = document.getElementById('paymentForm');
+        
+        timerDiv.classList.add('expired');
+        timerDiv.innerHTML = '<i class="fas fa-times-circle"></i> <span>Payment time expired. Booking has been cancelled.</span>';
+        
+        payBtn.disabled = true;
+        payBtn.innerHTML = '<i class="fas fa-ban"></i> Booking Expired';
+        
+        // Show message and redirect
+        const messageDiv = document.getElementById('message');
+        messageDiv.className = 'message error';
+        messageDiv.textContent = 'Your booking has been cancelled due to payment timeout. Redirecting...';
+        
+        setTimeout(() => {
+            window.location.href = '/my-bookings';
+        }, 3000);
+    }
+    
+    // Start the countdown
+    startCountdown();
     
     // Load booking details
     fetch('/api/my-bookings')

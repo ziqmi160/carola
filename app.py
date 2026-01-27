@@ -22,9 +22,65 @@ def allowed_file(filename):
 
 # ==================== SESSION MANAGEMENT ====================
 
+# Payment timeout configuration (15 minutes)
+PAYMENT_TIMEOUT_MINUTES = 15
+
+def auto_cancel_expired_bookings():
+    """Auto-cancel bookings that have been pending payment for more than 15 minutes"""
+    try:
+        # Find bookings that are:
+        # 1. Not yet paid (no payment record)
+        # 2. Created more than 15 minutes ago
+        # 3. Still in 'Confirmed' status (not yet cancelled)
+        expired_bookings_query = """
+            SELECT b.booking_id, b.car_id 
+            FROM Booking b
+            WHERE b.booking_status = 'Confirmed'
+            AND b.created_at < SYSDATE - INTERVAL '15' MINUTE
+            AND NOT EXISTS (SELECT 1 FROM Payment p WHERE p.booking_id = b.booking_id)
+        """
+        expired_bookings = Database.execute_query(expired_bookings_query)
+        
+        if expired_bookings:
+            for booking in expired_bookings:
+                booking_id = booking['BOOKING_ID']
+                car_id = booking['CAR_ID']
+                
+                # Cancel the booking
+                Database.execute_query(
+                    "UPDATE Booking SET booking_status = 'Cancelled' WHERE booking_id = :booking_id",
+                    {'booking_id': booking_id},
+                    fetch=False
+                )
+                
+                # Check if car has other active bookings before setting to Available
+                active_bookings = Database.execute_query(
+                    """SELECT COUNT(*) as cnt FROM Booking 
+                       WHERE car_id = :car_id 
+                       AND booking_id != :booking_id
+                       AND booking_status IN ('Confirmed', 'In Progress')
+                       AND TRUNC(SYSDATE) BETWEEN TRUNC(pickup_date) AND TRUNC(dropoff_date)""",
+                    {'car_id': car_id, 'booking_id': booking_id}
+                )
+                
+                if not active_bookings or active_bookings[0]['CNT'] == 0:
+                    Database.execute_query(
+                        "UPDATE Car SET car_status = 'Available' WHERE car_id = :car_id",
+                        {'car_id': car_id},
+                        fetch=False
+                    )
+                
+            print(f"[Auto-Cancel] Cancelled {len(expired_bookings)} expired booking(s)")
+    except Exception as e:
+        print(f"[Auto-Cancel Error] {str(e)}")
+
 @app.before_request
 def check_session_timeout():
     """Check and update session activity timestamp"""
+    # Run auto-cancel check on relevant endpoints
+    if request.endpoint in ['get_my_bookings', 'admin_get_bookings', 'admin']:
+        auto_cancel_expired_bookings()
+    
     # Skip for static files, login, register, and public pages
     exempt_routes = ['static', 'login', 'register', 'index', 'cars', 'get_cars', 'get_car', 'get_filters', 'check_session']
     if request.endpoint in exempt_routes:
@@ -224,6 +280,7 @@ def cars():
 def get_cars():
     try:
         location = request.args.get('location', '')
+        location_id = request.args.get('location_id', '')
         car_type = request.args.get('type', '')
         brand = request.args.get('brand', '')
         fuel_type = request.args.get('fuel_type', '')
@@ -232,62 +289,125 @@ def get_cars():
         min_price = request.args.get('min_price', '')
         max_price = request.args.get('max_price', '')
         
-        query = """
-            SELECT c.car_id, c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
-                   c.pickup_location, c.dropoff_location, c.available_locations, c.allows_different_dropoff,
-                   c.attachments,
-                   m.model_name, b.brand_name, ct.carType_name,
-                   CASE 
-                       WHEN EXISTS (SELECT 1 FROM Petrol WHERE car_id = c.car_id) THEN 'Petrol'
-                       WHEN EXISTS (SELECT 1 FROM Diesel WHERE car_id = c.car_id) THEN 'Diesel'
-                       WHEN EXISTS (SELECT 1 FROM Electric WHERE car_id = c.car_id) THEN 'Electric'
-                       ELSE 'N/A'
-                   END as fuel_type
-            FROM Car c
-            JOIN Model m ON c.model_id = m.model_id
-            JOIN Brand b ON m.brand_id = b.brand_id
-            JOIN CarType ct ON c.carType_id = ct.carType_id
-            WHERE 1=1
-        """
-        params = {}
-        
-        if location:
-            query += " AND (UPPER(c.available_locations) LIKE UPPER(:location) OR UPPER(c.pickup_location) LIKE UPPER(:location))"
-            params['location'] = f'%{location}%'
+        # When filtering by location, show one car per model at that location
+        # Otherwise, show one car per model (grouped view)
+        if location_id:
+            # Show specific cars at selected location
+            # Note: Show all cars except 'In Maintenance' - rented/dirty cars can still be booked for future dates
+            query = """
+                SELECT c.car_id, c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
+                       c.pickup_location, c.dropoff_location, c.available_locations, c.allows_different_dropoff,
+                       m.attachments, NVL(c.car_status, 'Available') as car_status,
+                       c.location_id,
+                       l.location_name as home_location, l.city as home_city,
+                       m.model_id, m.model_name, b.brand_name, ct.carType_name,
+                       CASE 
+                           WHEN EXISTS (SELECT 1 FROM Petrol WHERE car_id = c.car_id) THEN 'Petrol'
+                           WHEN EXISTS (SELECT 1 FROM Diesel WHERE car_id = c.car_id) THEN 'Diesel'
+                           WHEN EXISTS (SELECT 1 FROM Electric WHERE car_id = c.car_id) THEN 'Electric'
+                           ELSE 'N/A'
+                       END as fuel_type
+                FROM Car c
+                JOIN Model m ON c.model_id = m.model_id
+                JOIN Brand b ON m.brand_id = b.brand_id
+                JOIN CarType ct ON c.carType_id = ct.carType_id
+                LEFT JOIN Location l ON c.location_id = l.location_id
+                WHERE NVL(c.car_status, 'Available') NOT IN ('In Maintenance')
+                AND c.location_id = :location_id
+            """
+            params = {'location_id': int(location_id)}
+        else:
+            # Show one car per model (grouped view for browsing)
+            # Note: Count all cars except 'In Maintenance' - rented/dirty cars can still be booked for future dates
+            query = """
+                SELECT * FROM (
+                    SELECT c.car_id, c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
+                           c.pickup_location, c.dropoff_location, c.available_locations, c.allows_different_dropoff,
+                           m.attachments, NVL(c.car_status, 'Available') as car_status,
+                           c.location_id,
+                           l.location_name as home_location, l.city as home_city,
+                           m.model_id, m.model_name, b.brand_name, ct.carType_name,
+                           CASE 
+                               WHEN EXISTS (SELECT 1 FROM Petrol WHERE car_id = c.car_id) THEN 'Petrol'
+                               WHEN EXISTS (SELECT 1 FROM Diesel WHERE car_id = c.car_id) THEN 'Diesel'
+                               WHEN EXISTS (SELECT 1 FROM Electric WHERE car_id = c.car_id) THEN 'Electric'
+                               ELSE 'N/A'
+                           END as fuel_type,
+                           (SELECT COUNT(*) FROM Car c2 WHERE c2.model_id = c.model_id AND NVL(c2.car_status, 'Available') NOT IN ('In Maintenance')) as available_count,
+                           (SELECT COUNT(DISTINCT c3.location_id) FROM Car c3 WHERE c3.model_id = c.model_id AND NVL(c3.car_status, 'Available') NOT IN ('In Maintenance')) as location_count,
+                           ROW_NUMBER() OVER (PARTITION BY m.model_id ORDER BY c.rate) as rn
+                    FROM Car c
+                    JOIN Model m ON c.model_id = m.model_id
+                    JOIN Brand b ON m.brand_id = b.brand_id
+                    JOIN CarType ct ON c.carType_id = ct.carType_id
+                    LEFT JOIN Location l ON c.location_id = l.location_id
+                    WHERE NVL(c.car_status, 'Available') NOT IN ('In Maintenance')
+                ) WHERE rn = 1
+            """
+            params = {}
         
         if car_type:
-            query += " AND ct.carType_id = :car_type"
+            if location_id:
+                query += " AND ct.carType_id = :car_type"
+            else:
+                query = query.replace("WHERE rn = 1", "WHERE rn = 1 AND CARTYPE_NAME IN (SELECT carType_name FROM CarType WHERE carType_id = :car_type)")
             params['car_type'] = int(car_type)
         
         if brand:
-            query += " AND b.brand_id = :brand"
+            if location_id:
+                query += " AND b.brand_id = :brand"
+            else:
+                query = query.replace("WHERE rn = 1", "WHERE rn = 1 AND BRAND_NAME IN (SELECT brand_name FROM Brand WHERE brand_id = :brand)")
             params['brand'] = int(brand)
         
         if fuel_type:
+            fuel_filter = ""
             if fuel_type == 'Petrol':
-                query += " AND EXISTS (SELECT 1 FROM Petrol WHERE car_id = c.car_id)"
+                fuel_filter = "FUEL_TYPE = 'Petrol'"
             elif fuel_type == 'Diesel':
-                query += " AND EXISTS (SELECT 1 FROM Diesel WHERE car_id = c.car_id)"
+                fuel_filter = "FUEL_TYPE = 'Diesel'"
             elif fuel_type == 'Electric':
-                query += " AND EXISTS (SELECT 1 FROM Electric WHERE car_id = c.car_id)"
+                fuel_filter = "FUEL_TYPE = 'Electric'"
+            if fuel_filter:
+                if location_id:
+                    if fuel_type == 'Petrol':
+                        query += " AND EXISTS (SELECT 1 FROM Petrol WHERE car_id = c.car_id)"
+                    elif fuel_type == 'Diesel':
+                        query += " AND EXISTS (SELECT 1 FROM Diesel WHERE car_id = c.car_id)"
+                    elif fuel_type == 'Electric':
+                        query += " AND EXISTS (SELECT 1 FROM Electric WHERE car_id = c.car_id)"
+                else:
+                    query = query.replace("WHERE rn = 1", f"WHERE rn = 1 AND {fuel_filter}")
         
         if seats:
-            query += " AND c.seat = :seats"
+            if location_id:
+                query += " AND c.seat = :seats"
+            else:
+                query = query.replace("WHERE rn = 1", "WHERE rn = 1 AND SEAT = :seats")
             params['seats'] = int(seats)
         
         if bags:
-            query += " AND c.suitcase = :bags"
+            if location_id:
+                query += " AND c.suitcase = :bags"
+            else:
+                query = query.replace("WHERE rn = 1", "WHERE rn = 1 AND SUITCASE = :bags")
             params['bags'] = int(bags)
         
         if min_price:
-            query += " AND c.rate >= :min_price"
+            if location_id:
+                query += " AND c.rate >= :min_price"
+            else:
+                query = query.replace("WHERE rn = 1", "WHERE rn = 1 AND RATE >= :min_price")
             params['min_price'] = float(min_price)
         
         if max_price:
-            query += " AND c.rate <= :max_price"
+            if location_id:
+                query += " AND c.rate <= :max_price"
+            else:
+                query = query.replace("WHERE rn = 1", "WHERE rn = 1 AND RATE <= :max_price")
             params['max_price'] = float(max_price)
         
-        query += " ORDER BY c.rate"
+        query += " ORDER BY RATE"
         
         cars = Database.execute_query(query, params)
         
@@ -307,7 +427,8 @@ def get_car(car_id):
         query = """
             SELECT c.car_id, c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
                    c.pickup_location, c.dropoff_location, c.available_locations, c.allows_different_dropoff,
-                   c.attachments,
+                   m.attachments, c.location_id,
+                   l.location_name as home_location, l.city as home_city, l.is_airport,
                    m.model_name, b.brand_name, ct.carType_name,
                    CASE 
                        WHEN EXISTS (SELECT 1 FROM Petrol WHERE car_id = c.car_id) THEN 'Petrol'
@@ -322,6 +443,7 @@ def get_car(car_id):
             JOIN Model m ON c.model_id = m.model_id
             JOIN Brand b ON m.brand_id = b.brand_id
             JOIN CarType ct ON c.carType_id = ct.carType_id
+            LEFT JOIN Location l ON c.location_id = l.location_id
             LEFT JOIN Petrol p ON c.car_id = p.car_id
             LEFT JOIN Diesel d ON c.car_id = d.car_id
             LEFT JOIN Electric e ON c.car_id = e.car_id
@@ -343,28 +465,64 @@ def get_car(car_id):
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
+@app.route('/api/locations', methods=['GET'])
+def get_locations():
+    """Get all active locations from the Location table"""
+    try:
+        locations_query = """
+            SELECT location_id, location_name, address, city, state, postal_code,
+                   phone, email, opening_time, closing_time, is_airport 
+            FROM Location 
+            WHERE is_active = 1 
+            ORDER BY state, city, location_name
+        """
+        locations_result = Database.execute_query(locations_query)
+        
+        locations = [{
+            'location_id': row['LOCATION_ID'],
+            'location_name': row['LOCATION_NAME'],
+            'address': row['ADDRESS'],
+            'city': row['CITY'],
+            'state': row['STATE'],
+            'postal_code': row['POSTAL_CODE'],
+            'phone': row['PHONE'],
+            'email': row['EMAIL'],
+            'opening_time': row['OPENING_TIME'],
+            'closing_time': row['CLOSING_TIME'],
+            'is_airport': row['IS_AIRPORT'],
+            'display_name': f"{row['LOCATION_NAME']} ({row['CITY']})"
+        } for row in locations_result] if locations_result else []
+        
+        return jsonify({'success': True, 'locations': locations})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
 @app.route('/api/filters', methods=['GET'])
 def get_filters():
     try:
         brands = Database.execute_query("SELECT brand_id, brand_name FROM Brand ORDER BY brand_name")
         types = Database.execute_query("SELECT carType_id, carType_name FROM CarType ORDER BY carType_name")
         
-        # Get all available_locations from cars
-        locations_query = "SELECT DISTINCT available_locations FROM Car WHERE available_locations IS NOT NULL"
+        # Get locations that have bookable cars (not in maintenance)
+        locations_query = """
+            SELECT DISTINCT l.location_id, l.location_name, l.city, l.state, l.is_airport
+            FROM Location l
+            JOIN Car c ON l.location_id = c.location_id
+            WHERE l.is_active = 1
+            AND NVL(c.car_status, 'Available') NOT IN ('In Maintenance')
+            ORDER BY l.state, l.city, l.location_name
+        """
         locations_result = Database.execute_query(locations_query)
         
-        # Extract unique locations and clean them
-        locations_set = set()
-        for row in locations_result:
-            if row.get('AVAILABLE_LOCATIONS'):
-                # Split by comma and clean each location
-                locs = row['AVAILABLE_LOCATIONS'].split(',')
-                for loc in locs:
-                    clean_loc = loc.strip()
-                    if clean_loc:
-                        locations_set.add(clean_loc)
-        
-        locations = sorted(list(locations_set))
+        # Format locations with full details
+        locations = [{
+            'location_id': row['LOCATION_ID'],
+            'location_name': row['LOCATION_NAME'],
+            'city': row['CITY'],
+            'state': row['STATE'],
+            'is_airport': row['IS_AIRPORT'],
+            'display_name': f"{'✈️ ' if row['IS_AIRPORT'] == 1 else ''}{row['LOCATION_NAME']} ({row['CITY']})"
+        } for row in locations_result] if locations_result else []
         
         # Get unique seats
         seats_query = "SELECT DISTINCT seat FROM Car WHERE seat IS NOT NULL ORDER BY seat"
@@ -380,7 +538,7 @@ def get_filters():
             'success': True,
             'brands': brands,
             'types': types,
-            'locations': [{'location': loc} for loc in locations],
+            'locations': locations,
             'seats': seats,
             'bags': bags
         })
@@ -399,7 +557,99 @@ def book_car(car_id):
         # Staff cannot book cars - redirect to cars page with message
         return redirect(url_for('cars', staff_booking_error=1))
     
-    return render_template('booking.html', car_id=car_id)
+    return render_template('booking.html', car_id=car_id, model_id=None)
+
+@app.route('/book/model/<int:model_id>')
+def book_model(model_id):
+    """Book by model - allows choosing pickup location"""
+    if 'user_id' not in session:
+        return redirect(url_for('login', next=f'/book/model/{model_id}'))
+    
+    if session.get('user_type') == 'staff':
+        return redirect(url_for('cars', staff_booking_error=1))
+    
+    return render_template('booking.html', car_id=None, model_id=model_id)
+
+@app.route('/api/model/<int:model_id>', methods=['GET'])
+def get_model(model_id):
+    """Get model details and available locations"""
+    try:
+        # Get model info
+        model_query = """
+            SELECT m.model_id, m.model_name, m.attachments, b.brand_name, ct.carType_name,
+                   c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
+                   c.allows_different_dropoff
+            FROM Model m
+            JOIN Brand b ON m.brand_id = b.brand_id
+            JOIN Car c ON c.model_id = m.model_id
+            JOIN CarType ct ON c.carType_id = ct.carType_id
+            WHERE m.model_id = :model_id
+            AND ROWNUM = 1
+        """
+        model_result = Database.execute_query(model_query, {'model_id': model_id})
+        
+        if not model_result:
+            return jsonify({'success': False, 'message': 'Model not found'}), 404
+        
+        model = model_result[0]
+        
+        # Get bookable locations for this model (not in maintenance)
+        locations_query = """
+            SELECT DISTINCT l.location_id, l.location_name, l.city, l.state, l.is_airport,
+                   COUNT(c.car_id) as available_count
+            FROM Car c
+            JOIN Location l ON c.location_id = l.location_id
+            WHERE c.model_id = :model_id
+            AND NVL(c.car_status, 'Available') NOT IN ('In Maintenance')
+            AND l.is_active = 1
+            GROUP BY l.location_id, l.location_name, l.city, l.state, l.is_airport
+            ORDER BY l.state, l.city
+        """
+        locations_result = Database.execute_query(locations_query, {'model_id': model_id})
+        
+        locations = [{
+            'location_id': row['LOCATION_ID'],
+            'location_name': row['LOCATION_NAME'],
+            'city': row['CITY'],
+            'state': row['STATE'],
+            'is_airport': row['IS_AIRPORT'],
+            'available_count': row['AVAILABLE_COUNT'],
+            'display_name': f"{'✈️ ' if row['IS_AIRPORT'] == 1 else '📍 '}{row['LOCATION_NAME']} ({row['CITY']}) - {row['AVAILABLE_COUNT']} available"
+        } for row in locations_result] if locations_result else []
+        
+        # Get fuel type
+        fuel_query = """
+            SELECT CASE 
+                WHEN EXISTS (SELECT 1 FROM Petrol p JOIN Car c ON p.car_id = c.car_id WHERE c.model_id = :model_id) THEN 'Petrol'
+                WHEN EXISTS (SELECT 1 FROM Diesel d JOIN Car c ON d.car_id = c.car_id WHERE c.model_id = :model_id) THEN 'Diesel'
+                WHEN EXISTS (SELECT 1 FROM Electric e JOIN Car c ON e.car_id = c.car_id WHERE c.model_id = :model_id) THEN 'Electric'
+                ELSE 'N/A'
+            END as fuel_type FROM DUAL
+        """
+        fuel_result = Database.execute_query(fuel_query, {'model_id': model_id})
+        fuel_type = fuel_result[0]['FUEL_TYPE'] if fuel_result else 'N/A'
+        
+        return jsonify({
+            'success': True,
+            'model': {
+                'MODEL_ID': model['MODEL_ID'],
+                'MODEL_NAME': model['MODEL_NAME'],
+                'BRAND_NAME': model['BRAND_NAME'],
+                'CARTYPE_NAME': model['CARTYPE_NAME'],
+                'RATE': float(model['RATE']) if model['RATE'] else 0,
+                'DESCRIPTION': model['DESCRIPTION'],
+                'DOOR': model['DOOR'],
+                'SUITCASE': model['SUITCASE'],
+                'SEAT': model['SEAT'],
+                'COLOUR': model['COLOUR'],
+                'ALLOWS_DIFFERENT_DROPOFF': model['ALLOWS_DIFFERENT_DROPOFF'],
+                'ATTACHMENTS': model['ATTACHMENTS'],
+                'FUEL_TYPE': fuel_type
+            },
+            'locations': locations
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/bookings', methods=['POST'])
 def create_booking():
@@ -410,6 +660,71 @@ def create_booking():
         data = request.json
         cust_id = session['user_id']
         
+        # Parse dates first
+        pickup_date = datetime.strptime(data['pickup_date'], '%Y-%m-%dT%H:%M')
+        dropoff_date = datetime.strptime(data['dropoff_date'], '%Y-%m-%dT%H:%M')
+        pickup_location_id = data['pickup_location_id']
+        dropoff_location_id = data['dropoff_location_id']
+        
+        # Determine car_id: either provided directly or find from model_id
+        car_id = data.get('car_id')
+        
+        if not car_id and data.get('model_id'):
+            # MODEL-BASED BOOKING: Find an available car of this model at the pickup location
+            # Note: We check date conflicts, NOT car_status (a car rented today can be booked for next week)
+            find_car_query = """
+                SELECT c.car_id, c.rate 
+                FROM Car c
+                WHERE c.model_id = :model_id
+                AND c.location_id = :location_id
+                AND NVL(c.car_status, 'Available') NOT IN ('In Maintenance')
+                AND c.car_id NOT IN (
+                    SELECT b.car_id FROM Booking b
+                    WHERE b.booking_status NOT IN ('Cancelled', 'Completed')
+                    AND ((b.pickup_date <= :pickup_date AND b.dropoff_date >= :pickup_date)
+                         OR (b.pickup_date <= :dropoff_date AND b.dropoff_date >= :dropoff_date)
+                         OR (b.pickup_date >= :pickup_date AND b.dropoff_date <= :dropoff_date))
+                )
+                AND ROWNUM = 1
+            """
+            car_result = Database.execute_query(find_car_query, {
+                'model_id': data['model_id'],
+                'location_id': pickup_location_id,
+                'pickup_date': pickup_date,
+                'dropoff_date': dropoff_date
+            })
+            
+            if not car_result:
+                return jsonify({'success': False, 'message': 'No available car of this model at selected location for these dates'}), 400
+            
+            car_id = car_result[0]['CAR_ID']
+            rate = float(car_result[0]['RATE'])
+        else:
+            # SPECIFIC CAR BOOKING: Use provided car_id
+            car_query = "SELECT rate FROM Car WHERE car_id = :car_id"
+            car_result = Database.execute_query(car_query, {'car_id': car_id})
+            if not car_result:
+                return jsonify({'success': False, 'message': 'Car not found'}), 404
+            rate = float(car_result[0]['RATE'])
+            
+            # Check for conflicts
+            conflict_query = """
+                SELECT COUNT(*) as cnt FROM Booking
+                WHERE car_id = :car_id
+                AND booking_status NOT IN ('Cancelled', 'Completed')
+                AND ((pickup_date <= :pickup_date AND dropoff_date >= :pickup_date)
+                     OR (pickup_date <= :dropoff_date AND dropoff_date >= :dropoff_date)
+                     OR (pickup_date >= :pickup_date AND dropoff_date <= :dropoff_date))
+            """
+            conflict_result = Database.execute_query(conflict_query, {
+                'car_id': car_id,
+                'pickup_date': pickup_date,
+                'dropoff_date': dropoff_date
+            })
+            
+            if conflict_result and conflict_result[0]['CNT'] > 0:
+                return jsonify({'success': False, 'message': 'Car is not available for selected dates'}), 400
+        
         # Get first available staff
         staff_query = "SELECT staff_id FROM Staff WHERE ROWNUM = 1"
         staff_result = Database.execute_query(staff_query)
@@ -418,52 +733,33 @@ def create_booking():
         staff_id = staff_result[0]['STAFF_ID']
         
         # Calculate price
-        car_query = "SELECT rate FROM Car WHERE car_id = :car_id"
-        car_result = Database.execute_query(car_query, {'car_id': data['car_id']})
-        if not car_result:
-            return jsonify({'success': False, 'message': 'Car not found'}), 404
-        
-        rate = float(car_result[0]['RATE'])
-        # Handle datetime-local format (YYYY-MM-DDTHH:MM)
-        pickup_date = datetime.strptime(data['pickup_date'], '%Y-%m-%dT%H:%M')
-        dropoff_date = datetime.strptime(data['dropoff_date'], '%Y-%m-%dT%H:%M')
-        # Calculate days (minimum 1 day, round up partial days)
         diff_hours = (dropoff_date - pickup_date).total_seconds() / 3600
         days = max(1, int((diff_hours + 23) // 24))  # Round up to full days
         price = rate * days
         
-        # Check for conflicts
-        conflict_query = """
-            SELECT COUNT(*) as cnt FROM Booking
-            WHERE car_id = :car_id
-            AND ((pickup_date <= :pickup_date AND dropoff_date >= :pickup_date)
-                 OR (pickup_date <= :dropoff_date AND dropoff_date >= :dropoff_date)
-                 OR (pickup_date >= :pickup_date AND dropoff_date <= :dropoff_date))
-        """
-        conflict_result = Database.execute_query(conflict_query, {
-            'car_id': data['car_id'],
-            'pickup_date': pickup_date,
-            'dropoff_date': dropoff_date
-        })
-        
-        if conflict_result and conflict_result[0]['CNT'] > 0:
-            return jsonify({'success': False, 'message': 'Car is not available for selected dates'}), 400
-        
         # Create booking
         booking_query = """
-            INSERT INTO Booking (cust_id, staff_id, car_id, pickup_date, dropoff_date, pickup_location, dropoff_location, price)
-            VALUES (:cust_id, :staff_id, :car_id, :pickup_date, :dropoff_date, :pickup_location, :dropoff_location, :price)
+            INSERT INTO Booking (cust_id, staff_id, car_id, pickup_date, dropoff_date, pickup_location_id, dropoff_location_id, price)
+            VALUES (:cust_id, :staff_id, :car_id, :pickup_date, :dropoff_date, :pickup_location_id, :dropoff_location_id, :price)
         """
         Database.execute_query(booking_query, {
             'cust_id': cust_id,
             'staff_id': staff_id,
-            'car_id': data['car_id'],
+            'car_id': car_id,
             'pickup_date': pickup_date,
             'dropoff_date': dropoff_date,
-            'pickup_location': data['pickup_location'],
-            'dropoff_location': data['dropoff_location'],
+            'pickup_location_id': pickup_location_id,
+            'dropoff_location_id': dropoff_location_id,
             'price': price
         }, fetch=False)
+        
+        # Update car status to Rented if pickup date is today or past
+        if pickup_date.date() <= datetime.now().date():
+            Database.execute_query(
+                "UPDATE Car SET car_status = 'Rented' WHERE car_id = :car_id",
+                {'car_id': car_id},
+                fetch=False
+            )
         
         # Get the booking_id
         booking_id_query = "SELECT booking_id FROM (SELECT booking_id FROM Booking WHERE cust_id = :cust_id ORDER BY booking_id DESC) WHERE ROWNUM = 1"
@@ -487,22 +783,31 @@ def get_my_bookings():
     try:
         if session.get('user_type') == 'customer':
             query = """
-                SELECT b.booking_id, b.pickup_date, b.dropoff_date, b.pickup_location, b.dropoff_location, b.price,
+                SELECT b.booking_id, b.pickup_date, b.dropoff_date, b.price,
+                       b.booking_status, b.created_at,
+                       pl.location_name as pickup_location, pl.city as pickup_city,
+                       dl.location_name as dropoff_location, dl.city as dropoff_city,
                        c.car_id, m.model_name, br.brand_name, c.colour, c.rate,
                        CASE WHEN p.booking_id IS NOT NULL THEN 'Paid' ELSE 'Pending' END as payment_status
                 FROM Booking b
                 JOIN Car c ON b.car_id = c.car_id
                 JOIN Model m ON c.model_id = m.model_id
                 JOIN Brand br ON m.brand_id = br.brand_id
+                LEFT JOIN Location pl ON b.pickup_location_id = pl.location_id
+                LEFT JOIN Location dl ON b.dropoff_location_id = dl.location_id
                 LEFT JOIN Payment p ON b.booking_id = p.booking_id
                 WHERE b.cust_id = :user_id
+                AND NVL(b.booking_status, 'Confirmed') != 'Cancelled'
                 ORDER BY b.pickup_date DESC
             """
             params = {'user_id': session['user_id']}
         else:
             query = """
-                SELECT b.booking_id, b.pickup_date, b.dropoff_date, b.pickup_location, b.dropoff_location, b.price,
-                       c.car_id, m.model_name, br.brand_name, c.colour, c.rate,
+                SELECT b.booking_id, b.pickup_date, b.dropoff_date, b.price,
+                       b.booking_status, b.created_at,
+                       pl.location_name as pickup_location, pl.city as pickup_city,
+                       dl.location_name as dropoff_location, dl.city as dropoff_city,
+                       c.car_id, c.car_status, m.model_name, br.brand_name, c.colour, c.rate,
                        cu.cust_fname || ' ' || cu.cust_lname as customer_name, cu.cust_email, cu.cust_phone,
                        CASE WHEN p.booking_id IS NOT NULL THEN 'Paid' ELSE 'Pending' END as payment_status
                 FROM Booking b
@@ -510,6 +815,8 @@ def get_my_bookings():
                 JOIN Model m ON c.model_id = m.model_id
                 JOIN Brand br ON m.brand_id = br.brand_id
                 JOIN Customer cu ON b.cust_id = cu.cust_id
+                LEFT JOIN Location pl ON b.pickup_location_id = pl.location_id
+                LEFT JOIN Location dl ON b.dropoff_location_id = dl.location_id
                 LEFT JOIN Payment p ON b.booking_id = p.booking_id
                 ORDER BY b.pickup_date DESC
             """
@@ -753,8 +1060,11 @@ def get_booking_details(booking_id):
     
     try:
         query = """
-            SELECT b.booking_id, b.pickup_date, b.dropoff_date, b.pickup_location, b.dropoff_location, b.price,
-                   c.car_id, c.rate, c.colour, c.door, c.seat, c.suitcase, c.attachments,
+            SELECT b.booking_id, b.pickup_date, b.dropoff_date, b.price,
+                   b.booking_status, b.created_at,
+                   pl.location_name as pickup_location, pl.city as pickup_city, pl.address as pickup_address,
+                   dl.location_name as dropoff_location, dl.city as dropoff_city, dl.address as dropoff_address,
+                   c.car_id, c.rate, c.colour, c.door, c.seat, c.suitcase, m.attachments,
                    m.model_name, br.brand_name, ct.carType_name,
                    cu.cust_fname, cu.cust_lname, cu.cust_email, cu.cust_phone,
                    CASE WHEN p.booking_id IS NOT NULL THEN 'Paid' ELSE 'Pending' END as payment_status
@@ -764,6 +1074,8 @@ def get_booking_details(booking_id):
             JOIN Brand br ON m.brand_id = br.brand_id
             JOIN CarType ct ON c.carType_id = ct.carType_id
             JOIN Customer cu ON b.cust_id = cu.cust_id
+            LEFT JOIN Location pl ON b.pickup_location_id = pl.location_id
+            LEFT JOIN Location dl ON b.dropoff_location_id = dl.location_id
             LEFT JOIN Payment p ON b.booking_id = p.booking_id
             WHERE b.booking_id = :booking_id AND b.cust_id = :cust_id
         """
@@ -793,8 +1105,13 @@ def payment_page(booking_id):
     if 'user_id' not in session or session.get('user_type') != 'customer':
         return redirect(url_for('login'))
     
-    # Verify the booking belongs to this customer
-    verify_query = "SELECT booking_id FROM Booking WHERE booking_id = :booking_id AND cust_id = :cust_id"
+    # Verify the booking belongs to this customer and check status
+    verify_query = """
+        SELECT b.booking_id, b.booking_status, b.created_at,
+               CASE WHEN EXISTS (SELECT 1 FROM Payment p WHERE p.booking_id = b.booking_id) THEN 1 ELSE 0 END as is_paid
+        FROM Booking b 
+        WHERE b.booking_id = :booking_id AND b.cust_id = :cust_id
+    """
     result = Database.execute_query(verify_query, {
         'booking_id': booking_id,
         'cust_id': session['user_id']
@@ -803,7 +1120,58 @@ def payment_page(booking_id):
     if not result:
         return redirect(url_for('my_bookings'))
     
-    return render_template('payment.html', booking_id=booking_id)
+    booking = result[0]
+    
+    # If already paid or cancelled, redirect to my bookings
+    if booking['IS_PAID'] == 1:
+        return redirect(url_for('my_bookings'))
+    
+    if booking['BOOKING_STATUS'] == 'Cancelled':
+        return redirect(url_for('my_bookings'))
+    
+    return render_template('payment.html', booking_id=booking_id, payment_timeout_minutes=PAYMENT_TIMEOUT_MINUTES)
+
+@app.route('/api/booking/<int:booking_id>/time-remaining', methods=['GET'])
+def get_booking_time_remaining(booking_id):
+    """Get remaining time before booking auto-cancels"""
+    try:
+        query = """
+            SELECT b.created_at, b.booking_status,
+                   CASE WHEN EXISTS (SELECT 1 FROM Payment p WHERE p.booking_id = b.booking_id) THEN 1 ELSE 0 END as is_paid
+            FROM Booking b 
+            WHERE b.booking_id = :booking_id
+        """
+        result = Database.execute_query(query, {'booking_id': booking_id})
+        
+        if not result:
+            return jsonify({'success': False, 'message': 'Booking not found'}), 404
+        
+        booking = result[0]
+        
+        if booking['IS_PAID'] == 1:
+            return jsonify({'success': True, 'status': 'paid', 'message': 'Already paid'})
+        
+        if booking['BOOKING_STATUS'] == 'Cancelled':
+            return jsonify({'success': True, 'status': 'cancelled', 'message': 'Booking cancelled'})
+        
+        created_at = booking['CREATED_AT']
+        if created_at:
+            expiry_time = created_at + timedelta(minutes=PAYMENT_TIMEOUT_MINUTES)
+            time_remaining = (expiry_time - datetime.now()).total_seconds()
+            
+            if time_remaining <= 0:
+                return jsonify({'success': True, 'status': 'expired', 'seconds_remaining': 0, 'message': 'Payment time expired'})
+            
+            return jsonify({
+                'success': True, 
+                'status': 'pending',
+                'seconds_remaining': int(time_remaining),
+                'message': f'{int(time_remaining // 60)} minutes remaining'
+            })
+        
+        return jsonify({'success': True, 'status': 'unknown'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @app.route('/api/payment', methods=['POST'])
 def process_payment():
@@ -971,7 +1339,10 @@ def admin_get_cars():
     try:
         query = """
             SELECT c.car_id, c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
-                   c.attachments, c.pickup_location, c.dropoff_location, c.available_locations,
+                   m.attachments, c.pickup_location, c.dropoff_location, c.available_locations,
+                   NVL(c.car_status, 'Available') as car_status,
+                   c.location_id,
+                   l.location_name as home_location, l.city as home_city,
                    m.model_id, m.model_name, b.brand_id, b.brand_name, ct.carType_id, ct.carType_name,
                    CASE 
                        WHEN EXISTS (SELECT 1 FROM Petrol WHERE car_id = c.car_id) THEN 'Petrol'
@@ -983,7 +1354,8 @@ def admin_get_cars():
             JOIN Model m ON c.model_id = m.model_id
             JOIN Brand b ON m.brand_id = b.brand_id
             JOIN CarType ct ON c.carType_id = ct.carType_id
-            ORDER BY c.car_id DESC
+            LEFT JOIN Location l ON c.location_id = l.location_id
+            ORDER BY b.brand_name, m.model_name, l.location_name
         """
         cars = Database.execute_query(query)
         
@@ -1005,8 +1377,9 @@ def admin_get_car(car_id):
     try:
         query = """
             SELECT c.car_id, c.rate, c.description, c.door, c.suitcase, c.seat, c.colour,
-                   c.attachments, c.pickup_location, c.dropoff_location, c.available_locations,
-                   c.allows_different_dropoff,
+                   m.attachments, c.pickup_location, c.dropoff_location, c.available_locations,
+                   c.allows_different_dropoff, NVL(c.car_status, 'Available') as car_status,
+                   c.location_id,
                    m.model_id, m.model_name, b.brand_id, b.brand_name, ct.carType_id, ct.carType_name,
                    CASE 
                        WHEN EXISTS (SELECT 1 FROM Petrol WHERE car_id = c.car_id) THEN 'Petrol'
@@ -1057,9 +1430,7 @@ def admin_create_car():
         suitcase = request.form.get('suitcase')
         seat = request.form.get('seat')
         colour = request.form.get('colour', '')
-        pickup_location = request.form.get('pickup_location', '')
-        dropoff_location = request.form.get('dropoff_location', '')
-        available_locations = request.form.get('available_locations', '')
+        location_id = request.form.get('location_id')  # Single location where car is
         allows_different_dropoff = 1 if request.form.get('allows_different_dropoff') == '1' else 0
         
         # Handle image upload
@@ -1071,21 +1442,12 @@ def admin_create_car():
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 file.save(filepath)
         
-        # Insert car
+        # Insert car with location_id
         car_query = """
             INSERT INTO Car (model_id, carType_id, rate, description, door, suitcase, seat, colour,
-                           attachments, pickup_location, dropoff_location, available_locations, allows_different_dropoff)
+                           attachments, location_id, allows_different_dropoff)
             VALUES (:model_id, :carType_id, :rate, :description, :door, :suitcase, :seat, :colour,
-                   :attachments, :pickup_location, :dropoff_location, :available_locations, :allows_different_dropoff)
-            RETURNING car_id INTO :car_id
-        """
-        
-        # Oracle doesn't support RETURNING in the same way, so we'll use a different approach
-        car_query = """
-            INSERT INTO Car (model_id, carType_id, rate, description, door, suitcase, seat, colour,
-                           attachments, pickup_location, dropoff_location, available_locations, allows_different_dropoff)
-            VALUES (:model_id, :carType_id, :rate, :description, :door, :suitcase, :seat, :colour,
-                   :attachments, :pickup_location, :dropoff_location, :available_locations, :allows_different_dropoff)
+                   :attachments, :location_id, :allows_different_dropoff)
         """
         
         car_params = {
@@ -1098,9 +1460,7 @@ def admin_create_car():
             'seat': int(seat) if seat else None,
             'colour': colour if colour else None,
             'attachments': filename,
-            'pickup_location': pickup_location if pickup_location else None,
-            'dropoff_location': dropoff_location if dropoff_location else None,
-            'available_locations': available_locations if available_locations else None,
+            'location_id': int(location_id) if location_id else None,
             'allows_different_dropoff': allows_different_dropoff
         }
         
@@ -1187,9 +1547,7 @@ def admin_update_car(car_id):
         suitcase = request.form.get('suitcase')
         seat = request.form.get('seat')
         colour = request.form.get('colour', '')
-        pickup_location = request.form.get('pickup_location', '')
-        dropoff_location = request.form.get('dropoff_location', '')
-        available_locations = request.form.get('available_locations', '')
+        location_id = request.form.get('location_id')  # Single location where car is
         allows_different_dropoff = 1 if request.form.get('allows_different_dropoff') == '1' else 0
         
         # Handle image upload
@@ -1212,9 +1570,7 @@ def admin_update_car(car_id):
             'suitcase': int(suitcase) if suitcase else None,
             'seat': int(seat) if seat else None,
             'colour': colour if colour else None,
-            'pickup_location': pickup_location if pickup_location else None,
-            'dropoff_location': dropoff_location if dropoff_location else None,
-            'available_locations': available_locations if available_locations else None,
+            'location_id': int(location_id) if location_id else None,
             'allows_different_dropoff': allows_different_dropoff
         }
         
@@ -1224,8 +1580,7 @@ def admin_update_car(car_id):
                 UPDATE Car SET model_id = :model_id, carType_id = :carType_id, rate = :rate,
                              description = :description, door = :door, suitcase = :suitcase, seat = :seat,
                              colour = :colour, attachments = :attachments,
-                             pickup_location = :pickup_location, dropoff_location = :dropoff_location,
-                             available_locations = :available_locations, allows_different_dropoff = :allows_different_dropoff
+                             location_id = :location_id, allows_different_dropoff = :allows_different_dropoff
                 WHERE car_id = :car_id
             """
         else:
@@ -1233,8 +1588,7 @@ def admin_update_car(car_id):
                 UPDATE Car SET model_id = :model_id, carType_id = :carType_id, rate = :rate,
                              description = :description, door = :door, suitcase = :suitcase, seat = :seat,
                              colour = :colour,
-                             pickup_location = :pickup_location, dropoff_location = :dropoff_location,
-                             available_locations = :available_locations, allows_different_dropoff = :allows_different_dropoff
+                             location_id = :location_id, allows_different_dropoff = :allows_different_dropoff
                 WHERE car_id = :car_id
             """
         
@@ -1327,6 +1681,109 @@ def admin_delete_car(car_id):
         Database.execute_query("DELETE FROM Car WHERE car_id = :car_id", {'car_id': car_id}, fetch=False)
         
         return jsonify({'success': True, 'message': 'Car deleted successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# Admin: Update car status
+@app.route('/api/admin/car/<int:car_id>/status', methods=['PUT'])
+def admin_update_car_status(car_id):
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        data = request.json
+        new_status = data.get('status')
+        
+        valid_statuses = ['Available', 'Rented', 'Maintenance', 'Dirty']
+        if new_status not in valid_statuses:
+            return jsonify({'success': False, 'message': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
+        
+        Database.execute_query(
+            "UPDATE Car SET car_status = :status WHERE car_id = :car_id",
+            {'status': new_status, 'car_id': car_id},
+            fetch=False
+        )
+        
+        return jsonify({'success': True, 'message': f'Car status updated to {new_status}'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# Admin: Update booking status
+@app.route('/api/admin/booking/<int:booking_id>/status', methods=['PUT'])
+def admin_update_booking_status(booking_id):
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        data = request.json
+        new_status = data.get('status')
+        
+        valid_statuses = ['Confirmed', 'In Progress', 'Completed', 'Cancelled']
+        if new_status not in valid_statuses:
+            return jsonify({'success': False, 'message': f'Invalid status. Must be one of: {", ".join(valid_statuses)}'}), 400
+        
+        # Get the booking to check car_id
+        booking = Database.execute_query(
+            "SELECT car_id FROM Booking WHERE booking_id = :booking_id",
+            {'booking_id': booking_id}
+        )
+        
+        if not booking:
+            return jsonify({'success': False, 'message': 'Booking not found'}), 404
+        
+        car_id = booking[0]['CAR_ID']
+        
+        # Update booking status
+        Database.execute_query(
+            "UPDATE Booking SET booking_status = :status WHERE booking_id = :booking_id",
+            {'status': new_status, 'booking_id': booking_id},
+            fetch=False
+        )
+        
+        # Get booking dates to check if rental period has started
+        booking_dates = Database.execute_query(
+            "SELECT pickup_date, dropoff_date FROM Booking WHERE booking_id = :booking_id",
+            {'booking_id': booking_id}
+        )
+        pickup_date = booking_dates[0]['PICKUP_DATE'] if booking_dates else None
+        
+        # Auto-update car status based on booking status
+        if new_status == 'In Progress':
+            # Car is now rented
+            Database.execute_query(
+                "UPDATE Car SET car_status = 'Rented' WHERE car_id = :car_id",
+                {'car_id': car_id},
+                fetch=False
+            )
+        elif new_status == 'Confirmed':
+            # If pickup date has started, car should be Rented
+            if pickup_date and pickup_date.date() <= datetime.now().date():
+                Database.execute_query(
+                    "UPDATE Car SET car_status = 'Rented' WHERE car_id = :car_id",
+                    {'car_id': car_id},
+                    fetch=False
+                )
+        elif new_status in ['Completed', 'Cancelled']:
+            # Check if car has any other active bookings
+            active_bookings = Database.execute_query(
+                """SELECT COUNT(*) as cnt FROM Booking 
+                   WHERE car_id = :car_id 
+                   AND booking_id != :booking_id
+                   AND NVL(booking_status, 'Confirmed') IN ('Confirmed', 'In Progress')
+                   AND TRUNC(SYSDATE) BETWEEN TRUNC(pickup_date) AND TRUNC(dropoff_date)""",
+                {'car_id': car_id, 'booking_id': booking_id}
+            )
+            
+            if not active_bookings or active_bookings[0]['CNT'] == 0:
+                # No other active bookings, set car to Available (or Dirty if completed)
+                car_status = 'Dirty' if new_status == 'Completed' else 'Available'
+                Database.execute_query(
+                    "UPDATE Car SET car_status = :status WHERE car_id = :car_id",
+                    {'status': car_status, 'car_id': car_id},
+                    fetch=False
+                )
+        
+        return jsonify({'success': True, 'message': f'Booking status updated to {new_status}'})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
 
@@ -1514,7 +1971,7 @@ def admin_get_all_models():
     
     try:
         query = """
-            SELECT m.model_id, m.model_name, b.brand_id, b.brand_name
+            SELECT m.model_id, m.model_name, m.attachments, b.brand_id, b.brand_name
             FROM Model m
             JOIN Brand b ON m.brand_id = b.brand_id
             ORDER BY b.brand_name, m.model_name
@@ -1523,6 +1980,55 @@ def admin_get_all_models():
         return jsonify({'success': True, 'models': models})
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+# Admin: Upload model image
+@app.route('/api/admin/model/<int:model_id>/image', methods=['POST'])
+def admin_upload_model_image(model_id):
+    if 'user_id' not in session or session.get('user_type') != 'staff':
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+    
+    try:
+        if 'attachments' not in request.files:
+            return jsonify({'success': False, 'message': 'No file provided'}), 400
+        
+        file = request.files['attachments']
+        if file.filename == '':
+            return jsonify({'success': False, 'message': 'No file selected'}), 400
+        
+        if file and allowed_file(file.filename):
+            # Create filename based on model_id
+            ext = file.filename.rsplit('.', 1)[1].lower()
+            filename = f"model_{model_id}.{ext}"
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+            file.save(filepath)
+            
+            # Update model with new attachment
+            query = "UPDATE Model SET attachments = :attachments WHERE model_id = :model_id"
+            Database.execute_query(query, {
+                'attachments': filename,
+                'model_id': model_id
+            }, fetch=False)
+            
+            return jsonify({'success': True, 'message': 'Model image uploaded successfully', 'filename': filename})
+        else:
+            return jsonify({'success': False, 'message': 'Invalid file type'}), 400
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)}), 500
+
+# Get model image
+@app.route('/api/model/<int:model_id>/image', methods=['GET'])
+def get_model_image(model_id):
+    try:
+        query = "SELECT attachments FROM Model WHERE model_id = :model_id"
+        result = Database.execute_query(query, {'model_id': model_id})
+        
+        if result and result[0]['ATTACHMENTS']:
+            return send_from_directory(app.config['UPLOAD_FOLDER'], result[0]['ATTACHMENTS'])
+        else:
+            # Return placeholder
+            return redirect('https://via.placeholder.com/300x200?text=No+Image')
+    except Exception as e:
+        return redirect('https://via.placeholder.com/300x200?text=Error')
 
 # Admin: Update payment status
 @app.route('/api/admin/booking/payment-status', methods=['PUT'])

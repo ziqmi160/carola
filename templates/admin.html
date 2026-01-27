@@ -315,18 +315,12 @@
             </div>
             
             <div class="form-group">
-                <label>Pickup Locations (comma-separated)</label>
-                <input type="text" id="pickup_location" name="pickup_location" placeholder="KLIA, KLIA2, KL Sentral">
-            </div>
-            
-            <div class="form-group">
-                <label>Drop-off Locations (comma-separated)</label>
-                <input type="text" id="dropoff_location" name="dropoff_location" placeholder="KLIA, KLIA2, KL Sentral">
-            </div>
-            
-            <div class="form-group">
-                <label>Available Locations (comma-separated)</label>
-                <input type="text" id="available_locations" name="available_locations" placeholder="Kuala Lumpur, Selangor">
+                <label>Car Location <span class="required">*</span></label>
+                <select id="car_location" name="location_id" required>
+                    <option value="">Select location...</option>
+                    <!-- Populated via JavaScript -->
+                </select>
+                <small class="form-hint">Where this car is physically located (pickup location)</small>
             </div>
             
             <div class="form-group">
@@ -334,13 +328,12 @@
                     <input type="checkbox" id="allows_different_dropoff" name="allows_different_dropoff" value="1" checked>
                     Allow Different Drop-off Location
                 </label>
+                <small class="form-hint">If checked, customers can return the car to a different location</small>
             </div>
             
             <div class="form-group">
                 <label>Car Image</label>
-                <input type="file" id="car_image" name="attachments" accept="image/*" onchange="previewImage(event)">
-                <div id="image-preview" style="margin-top: 10px;"></div>
-                <div id="current-image" style="margin-top: 10px;"></div>
+                <p class="form-hint" style="margin: 0;"><i class="fas fa-info-circle"></i> Images are managed at the Model level. Go to <strong>Models</strong> tab to upload model images.</p>
             </div>
             
             <div class="modal-footer">
@@ -406,6 +399,35 @@
     </div>
 </div>
 
+<!-- Model Image Upload Modal -->
+<div id="modelImageModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="model-image-title">Upload Model Image</h2>
+            <span class="close" onclick="closeModelImageModal()">&times;</span>
+        </div>
+        <form id="modelImageForm" onsubmit="saveModelImage(event)">
+            <input type="hidden" id="upload_model_id">
+            <div class="form-group">
+                <label>Current Image</label>
+                <div id="current-model-image" style="margin-bottom: 15px;">
+                    <img id="model-image-preview-current" style="max-width: 300px; max-height: 200px; object-fit: contain; border-radius: 8px;">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>New Image</label>
+                <input type="file" id="model_image" name="attachments" accept="image/*" onchange="previewModelImage(event)">
+                <small style="color: var(--text-secondary);">Recommended: 800x500px, JPG or PNG</small>
+                <div id="model-image-preview" style="margin-top: 10px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeModelImageModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Upload Image</button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <!-- Add/Edit Staff Modal -->
 <div id="staffModal" class="modal">
     <div class="modal-content">
@@ -463,6 +485,188 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
+/* Status dropdown styles */
+.status-select {
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color, #ddd);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+    min-width: 130px;
+}
+
+.status-select.status-available {
+    background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+    border-color: #10b981;
+    color: #065f46;
+}
+
+.status-select.status-rented {
+    background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+    border-color: #3b82f6;
+    color: #1e40af;
+}
+
+.status-select.status-maintenance {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-color: #f59e0b;
+    color: #92400e;
+}
+
+.status-select.status-dirty {
+    background: linear-gradient(135deg, #f3f4f6, #e5e7eb);
+    border-color: #6b7280;
+    color: #374151;
+}
+
+/* Booking status badges */
+.booking-status {
+    padding: 0.35rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.booking-status.confirmed {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+.booking-status.in-progress {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.booking-status.completed {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.booking-status.cancelled {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Booking status select colors */
+.status-select.status-confirmed {
+    background: linear-gradient(135deg, #dbeafe, #bfdbfe);
+    border-color: #3b82f6;
+    color: #1e40af;
+}
+
+.status-select.status-in-progress {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-color: #f59e0b;
+    color: #92400e;
+}
+
+.status-select.status-completed {
+    background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+    border-color: #10b981;
+    color: #065f46;
+}
+
+.status-select.status-cancelled {
+    background: linear-gradient(135deg, #fee2e2, #fecaca);
+    border-color: #ef4444;
+    color: #991b1b;
+}
+
+/* Payment status select */
+.payment-status-select {
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.5rem;
+    border: 1px solid var(--border-color, #ddd);
+    font-size: 0.8rem;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.payment-status-select.paid {
+    background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+    border-color: #10b981;
+    color: #065f46;
+}
+
+/* Location badge */
+.location-badge {
+    display: inline-block;
+    font-size: 0.85rem;
+    color: #374151;
+    font-weight: 500;
+}
+
+.text-muted {
+    color: #6b7280;
+    font-size: 0.75rem;
+}
+
+.payment-status-select.pending {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    border-color: #f59e0b;
+    color: #92400e;
+}
+
+/* Car status badge in booking table */
+.car-status-badge {
+    padding: 0.2rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.car-status-badge.status-available { background: #d1fae5; color: #065f46; }
+.car-status-badge.status-rented { background: #dbeafe; color: #1e40af; }
+.car-status-badge.status-maintenance { background: #fef3c7; color: #92400e; }
+.car-status-badge.status-dirty { background: #f3f4f6; color: #374151; }
+
+/* Multi-select dropdown styles */
+.multi-select {
+    width: 100%;
+    min-height: 120px;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color, #ddd);
+    border-radius: 0.5rem;
+    background: var(--input-bg, #fff);
+    font-size: 0.9rem;
+}
+
+.multi-select option {
+    padding: 0.5rem 0.75rem;
+    margin: 2px 0;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.multi-select option:checked {
+    background: linear-gradient(135deg, var(--primary-color, #dc2626), #b91c1c);
+    color: white;
+}
+
+.multi-select option:hover {
+    background: var(--hover-bg, #f3f4f6);
+}
+
+.form-group .hint {
+    font-size: 0.75rem;
+    color: var(--text-secondary, #666);
+    font-weight: normal;
+}
+
+.form-group .form-hint {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-secondary, #666);
+    margin-top: 4px;
+}
+
+/* Airport indicator in select */
+.multi-select option[data-airport="1"]::before {
+    content: "✈️ ";
+}
+
 /* Dashboard Styles */
 .dashboard-stats {
     display: grid;
@@ -992,6 +1196,8 @@
                 car.BRAND_NAME.toLowerCase().includes(searchTerm) ||
                 car.MODEL_NAME.toLowerCase().includes(searchTerm) ||
                 (car.COLOUR && car.COLOUR.toLowerCase().includes(searchTerm)) ||
+                (car.HOME_LOCATION && car.HOME_LOCATION.toLowerCase().includes(searchTerm)) ||
+                (car.HOME_CITY && car.HOME_CITY.toLowerCase().includes(searchTerm)) ||
                 car.CAR_ID.toString().includes(searchTerm);
             const brandMatch = !brandFilter || car.BRAND_NAME === brandFilter;
             const typeMatch = !typeFilter || car.CARTYPE_NAME === typeFilter;
@@ -1028,10 +1234,11 @@
                         <tr>
                             <th>ID</th>
                             <th>Car</th>
+                            <th>Location</th>
                             <th>Type</th>
                             <th>Fuel</th>
                             <th>Rate</th>
-                            <th>Seats/Bags</th>
+                            <th>Status</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -1041,18 +1248,30 @@
                                 <td>#${car.CAR_ID}</td>
                                 <td>
                                     <strong>${car.BRAND_NAME} ${car.MODEL_NAME}</strong><br>
-                                    <small>${car.COLOUR || 'N/A'}</small>
+                                    <small>${car.COLOUR || 'N/A'} • ${car.SEAT || 0} seats</small>
+                                </td>
+                                <td>
+                                    <span class="location-badge">📍 ${car.HOME_LOCATION || car.PICKUP_LOCATION || 'N/A'}</span>
+                                    ${car.HOME_CITY ? `<br><small class="text-muted">${car.HOME_CITY}</small>` : ''}
                                 </td>
                                 <td>${car.CARTYPE_NAME}</td>
                                 <td>${car.FUEL_TYPE || 'N/A'}</td>
                                 <td>RM ${parseFloat(car.RATE).toFixed(2)}</td>
-                                <td>${car.SEAT || 0} Seats / ${car.SUITCASE || 0} Bags</td>
+                                <td>
+                                    <select class="status-select status-${(car.CAR_STATUS || 'Available').toLowerCase().replace(' ', '-')}" 
+                                            onchange="updateCarStatus(${car.CAR_ID}, this.value)">
+                                        <option value="Available" ${car.CAR_STATUS === 'Available' ? 'selected' : ''}>✅ Available</option>
+                                        <option value="Rented" ${car.CAR_STATUS === 'Rented' ? 'selected' : ''}>🚗 Rented</option>
+                                        <option value="Maintenance" ${car.CAR_STATUS === 'Maintenance' ? 'selected' : ''}>🔧 Maintenance</option>
+                                        <option value="Dirty" ${car.CAR_STATUS === 'Dirty' ? 'selected' : ''}>🧹 Dirty</option>
+                                    </select>
+                                </td>
                                 <td>
                                     <button class="btn btn-sm btn-primary" onclick="editCar(${car.CAR_ID})">
-                                        <i class="fas fa-edit"></i> Edit
+                                        <i class="fas fa-edit"></i>
                                     </button>
                                     <button class="btn btn-sm btn-danger" onclick="deleteCar(${car.CAR_ID})">
-                                        <i class="fas fa-trash"></i> Delete
+                                        <i class="fas fa-trash"></i>
                                     </button>
                                 </td>
                             </tr>
@@ -1064,19 +1283,53 @@
     }
     
     // Show add car modal
-    function showAddCarModal() {
+    // Load locations into dropdown
+    let locationsCache = null;
+    
+    async function loadLocationDropdown() {
+        if (!locationsCache) {
+            try {
+                const res = await fetch('/api/locations');
+                const data = await res.json();
+                if (data.success) {
+                    locationsCache = data.locations;
+                }
+            } catch (err) {
+                console.error('Error loading locations:', err);
+                return;
+            }
+        }
+        
+        const select = document.getElementById('car_location');
+        select.innerHTML = '<option value="">Select location...</option>';
+        
+        locationsCache.forEach(loc => {
+            const option = document.createElement('option');
+            option.value = loc.location_id;
+            option.textContent = loc.is_airport ? `✈️ ${loc.location_name} (${loc.city})` : `📍 ${loc.location_name} (${loc.city})`;
+            option.dataset.airport = loc.is_airport;
+            select.appendChild(option);
+        });
+    }
+    
+    async function showAddCarModal() {
         document.getElementById('modal-title').textContent = 'Add New Car';
         document.getElementById('carForm').reset();
         document.getElementById('car_id').value = '';
-        document.getElementById('image-preview').innerHTML = '';
-        document.getElementById('current-image').innerHTML = '';
         toggleFuelFields();
         setChargingDateMax(); // Set max date for charging date field
+        
+        // Load location dropdown
+        await loadLocationDropdown();
+        
         document.getElementById('carModal').style.display = 'block';
     }
     
     // Edit car
-    function editCar(carId) {
+    async function editCar(carId) {
+        // Load locations first
+        await loadLocationDropdown();
+        
         fetch(`/api/admin/car/${carId}`)
             .then(res => res.json())
             .then(data => {
@@ -1097,9 +1350,12 @@
                     document.getElementById('car_seat').value = car.SEAT || '';
                     document.getElementById('car_suitcase').value = car.SUITCASE || '';
                     document.getElementById('car_description').value = car.DESCRIPTION || '';
-                    document.getElementById('pickup_location').value = car.PICKUP_LOCATION || '';
-                    document.getElementById('dropoff_location').value = car.DROPOFF_LOCATION || '';
-                    document.getElementById('available_locations').value = car.AVAILABLE_LOCATIONS || '';
+                    
+                    // Set car location (slight delay to ensure dropdown is populated)
+                    setTimeout(() => {
+                        document.getElementById('car_location').value = car.LOCATION_ID || '';
+                    }, 100);
+                    
                     document.getElementById('allows_different_dropoff').checked = car.ALLOWS_DIFFERENT_DROPOFF == 1;
                     
                     // Fuel type specific fields
@@ -1123,20 +1379,6 @@
                     }
                     
                     toggleFuelFields();
-                    
-                    // Clear any previous image preview from file selection
-                    document.getElementById('image-preview').innerHTML = '';
-                    
-                    // Show current image if exists, or clear it if not
-                    if (car.ATTACHMENTS) {
-                        document.getElementById('current-image').innerHTML = `
-                            <p>Current Image:</p>
-                            <img src="/uploads/${car.ATTACHMENTS}" style="max-width: 200px; height: auto;">
-                        `;
-                    } else {
-                        document.getElementById('current-image').innerHTML = '';
-                    }
-                    
                     setChargingDateMax(); // Set max date for charging date field
                     document.getElementById('carModal').style.display = 'block';
                 }
@@ -1166,11 +1408,60 @@
             });
     }
     
+    // Update car status
+    async function updateCarStatus(carId, newStatus) {
+        try {
+            const response = await fetch(`/api/admin/car/${carId}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus })
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                toastSuccess(`Car status updated to ${newStatus}`);
+                loadCars(); // Refresh to update styling
+            } else {
+                toastError(data.message);
+                loadCars(); // Refresh to revert dropdown
+            }
+        } catch (err) {
+            toastError('Failed to update car status');
+            loadCars();
+        }
+    }
+    
+    // Update booking status
+    async function updateBookingStatus(bookingId, newStatus) {
+        try {
+            const response = await fetch(`/api/admin/booking/${bookingId}/status`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus })
+            });
+            const data = await response.json();
+            
+            if (data.success) {
+                toastSuccess(`Booking status updated to ${newStatus}`);
+                loadBookings(); // Refresh bookings
+                loadCars(); // Refresh cars (status may have changed)
+            } else {
+                toastError(data.message);
+                loadBookings();
+            }
+        } catch (err) {
+            toastError('Failed to update booking status');
+            loadBookings();
+        }
+    }
+    
     // Save car
     function saveCar(event) {
         event.preventDefault();
         const formData = new FormData(document.getElementById('carForm'));
         const carId = document.getElementById('car_id').value;
+        
+        // location_id is already in formData from the select
         
         fetch(`/api/admin/car${carId ? '/' + carId : ''}`, {
             method: carId ? 'PUT' : 'POST',
@@ -1196,21 +1487,6 @@
         document.getElementById('carModal').style.display = 'none';
     }
     
-    // Image preview
-    function previewImage(event) {
-        const file = event.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = function(e) {
-                document.getElementById('image-preview').innerHTML = `
-                    <p>New Image Preview:</p>
-                    <img src="${e.target.result}" style="max-width: 200px; height: auto;">
-                `;
-            };
-            reader.readAsDataURL(file);
-        }
-    }
-    
     // Load bookings
     function loadBookings() {
         fetch('/api/my-bookings')
@@ -1232,12 +1508,11 @@
                                         <th>Booking ID</th>
                                         <th>Customer</th>
                                         <th>Car</th>
-                                        <th>Pickup Date & Time</th>
-                                        <th>Drop-off Date & Time</th>
-                                        <th>Pickup Location</th>
-                                        <th>Drop-off Location</th>
+                                        <th>Dates</th>
+                                        <th>Locations</th>
                                         <th>Price</th>
-                                        <th>Payment Status</th>
+                                        <th>Booking Status</th>
+                                        <th>Payment</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -1245,28 +1520,41 @@
                                         const pickupDate = new Date(booking.PICKUP_DATE);
                                         const dropoffDate = new Date(booking.DROPOFF_DATE);
                                         const isPaid = booking.PAYMENT_STATUS === 'Paid';
-                                        const formatDateTime = (d) => d.toLocaleDateString('en-GB') + '<br><small>' + d.toLocaleTimeString('en-GB', {hour: '2-digit', minute:'2-digit'}) + '</small>';
+                                        const bookingStatus = booking.BOOKING_STATUS || 'Confirmed';
+                                        const formatDate = (d) => d.toLocaleDateString('en-GB', {day: '2-digit', month: 'short'});
                                         return `
                                             <tr>
                                                 <td>#${booking.BOOKING_ID}</td>
                                                 <td>
-                                                    ${booking.CUSTOMER_NAME || 'N/A'}<br>
-                                                    <small>${booking.CUST_EMAIL || ''}</small><br>
+                                                    <strong>${booking.CUSTOMER_NAME || 'N/A'}</strong><br>
                                                     <small>${booking.CUST_PHONE || ''}</small>
                                                 </td>
-                                                <td>${booking.BRAND_NAME} ${booking.MODEL_NAME}</td>
-                                                <td>${formatDateTime(pickupDate)}</td>
-                                                <td>${formatDateTime(dropoffDate)}</td>
-                                                <td>${booking.PICKUP_LOCATION || 'N/A'}</td>
-                                                <td>${booking.DROPOFF_LOCATION || 'N/A'}</td>
-                                                <td>RM ${parseFloat(booking.PRICE).toFixed(2)}</td>
                                                 <td>
-                                                    <select class="payment-status-select" 
-                                                            data-booking-id="${booking.BOOKING_ID}"
-                                                            onchange="updatePaymentStatus(${booking.BOOKING_ID}, this.value)"
-                                                            style="padding: 0.5rem; border-radius: 0.5rem; border: 1px solid var(--border-color); font-size: 0.9rem; cursor: pointer;">
-                                                        <option value="Pending" ${!isPaid ? 'selected' : ''}>Pending</option>
-                                                        <option value="Paid" ${isPaid ? 'selected' : ''}>Paid</option>
+                                                    ${booking.BRAND_NAME} ${booking.MODEL_NAME}<br>
+                                                    <small class="car-status-badge status-${(booking.CAR_STATUS || 'Available').toLowerCase()}">${booking.CAR_STATUS || 'Available'}</small>
+                                                </td>
+                                                <td>
+                                                    <small>📅 ${formatDate(pickupDate)} → ${formatDate(dropoffDate)}</small>
+                                                </td>
+                                                <td>
+                                                    <small>📍 ${booking.PICKUP_LOCATION || 'N/A'}</small><br>
+                                                    <small>🏁 ${booking.DROPOFF_LOCATION || 'N/A'}</small>
+                                                </td>
+                                                <td><strong>RM ${parseFloat(booking.PRICE).toFixed(2)}</strong></td>
+                                                <td>
+                                                    <select class="status-select status-${bookingStatus.toLowerCase().replace(' ', '-')}" 
+                                                            onchange="updateBookingStatus(${booking.BOOKING_ID}, this.value)">
+                                                        <option value="Confirmed" ${bookingStatus === 'Confirmed' ? 'selected' : ''}>📋 Confirmed</option>
+                                                        <option value="In Progress" ${bookingStatus === 'In Progress' ? 'selected' : ''}>🚗 In Progress</option>
+                                                        <option value="Completed" ${bookingStatus === 'Completed' ? 'selected' : ''}>✅ Completed</option>
+                                                        <option value="Cancelled" ${bookingStatus === 'Cancelled' ? 'selected' : ''}>❌ Cancelled</option>
+                                                    </select>
+                                                </td>
+                                                <td>
+                                                    <select class="payment-status-select ${isPaid ? 'paid' : 'pending'}" 
+                                                            onchange="updatePaymentStatus(${booking.BOOKING_ID}, this.value)">
+                                                        <option value="Pending" ${!isPaid ? 'selected' : ''}>⏳ Pending</option>
+                                                        <option value="Paid" ${isPaid ? 'selected' : ''}>💰 Paid</option>
                                                     </select>
                                                 </td>
                                             </tr>
@@ -1346,24 +1634,33 @@
                                 <table class="admin-table">
                                     <thead>
                                         <tr>
-                                            <th style="width: 100px;">ID</th>
+                                            <th style="width: 80px;">ID</th>
+                                            <th style="width: 100px;">Image</th>
                                             <th>Model Name</th>
                                             <th>Brand</th>
-                                            <th style="width: 200px;">Actions</th>
+                                            <th style="width: 280px;">Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         ${modelsData.models.map(model => `
                                             <tr>
                                                 <td>#${model.MODEL_ID}</td>
-                                                <td>${model.MODEL_NAME}</td>
+                                                <td>
+                                                    <img src="${model.ATTACHMENTS ? '/uploads/' + model.ATTACHMENTS : 'https://via.placeholder.com/80x50?text=No+Image'}" 
+                                                         style="width: 80px; height: 50px; object-fit: cover; border-radius: 4px;"
+                                                         onerror="this.src='https://via.placeholder.com/80x50?text=No+Image'">
+                                                </td>
+                                                <td><strong>${model.MODEL_NAME}</strong></td>
                                                 <td>${model.BRAND_NAME}</td>
                                                 <td style="white-space: nowrap;">
+                                                    <button class="btn btn-sm btn-secondary" onclick="uploadModelImage(${model.MODEL_ID}, '${model.MODEL_NAME.replace(/'/g, "\\'")}')">
+                                                        <i class="fas fa-image"></i> Image
+                                                    </button>
                                                     <button class="btn btn-sm btn-primary" onclick="editModel(${model.MODEL_ID}, '${model.MODEL_NAME.replace(/'/g, "\\'")}', ${model.BRAND_ID})">
-                                                        <i class="fas fa-edit"></i> Edit
+                                                        <i class="fas fa-edit"></i>
                                                     </button>
                                                     <button class="btn btn-sm btn-danger" onclick="deleteModel(${model.MODEL_ID})">
-                                                        <i class="fas fa-trash"></i> Delete
+                                                        <i class="fas fa-trash"></i>
                                                     </button>
                                                 </td>
                                             </tr>
@@ -1574,6 +1871,71 @@
                 } else {
                     toastError(data.message);
                 }
+            });
+    }
+    
+    // Model image upload functions
+    function uploadModelImage(modelId, modelName) {
+        document.getElementById('model-image-title').textContent = `Upload Image: ${modelName}`;
+        document.getElementById('upload_model_id').value = modelId;
+        document.getElementById('model_image').value = '';
+        document.getElementById('model-image-preview').innerHTML = '';
+        
+        // Show current image
+        const currentImg = document.getElementById('model-image-preview-current');
+        currentImg.src = `/api/model/${modelId}/image?t=${Date.now()}`;
+        currentImg.onerror = () => { currentImg.src = 'https://via.placeholder.com/300x200?text=No+Image'; };
+        
+        document.getElementById('modelImageModal').style.display = 'block';
+    }
+    
+    function closeModelImageModal() {
+        document.getElementById('modelImageModal').style.display = 'none';
+    }
+    
+    function previewModelImage(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                document.getElementById('model-image-preview').innerHTML = `
+                    <p>New Image Preview:</p>
+                    <img src="${e.target.result}" style="max-width: 300px; max-height: 200px; object-fit: contain; border-radius: 8px;">
+                `;
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+    
+    function saveModelImage(event) {
+        event.preventDefault();
+        const modelId = document.getElementById('upload_model_id').value;
+        const formData = new FormData();
+        const fileInput = document.getElementById('model_image');
+        
+        if (!fileInput.files[0]) {
+            toastWarning('Please select an image file');
+            return;
+        }
+        
+        formData.append('attachments', fileInput.files[0]);
+        
+        fetch(`/api/admin/model/${modelId}/image`, {
+            method: 'POST',
+            body: formData
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    toastSuccess('Model image uploaded successfully!');
+                    closeModelImageModal();
+                    loadBrandsAndModels();
+                } else {
+                    toastError(data.message);
+                }
+            })
+            .catch(err => {
+                toastError('Failed to upload image');
             });
     }
     

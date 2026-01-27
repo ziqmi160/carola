@@ -108,12 +108,13 @@
                 const typeSelect = document.getElementById('filter-type');
                 const brandSelect = document.getElementById('filter-brand');
                 
-                // Populate locations
+                // Populate locations from Location table (only locations with cars)
                 if (data.locations) {
                     data.locations.forEach(loc => {
                         const option = document.createElement('option');
-                        option.value = loc.location;
-                        option.textContent = loc.location;
+                        // Use location_id for filtering (fleet inventory system)
+                        option.value = loc.location_id;
+                        option.textContent = loc.display_name;
                         locationSelect.appendChild(option);
                     });
                 }
@@ -174,7 +175,7 @@
     
     function applyFilters() {
         filters = {
-            location: document.getElementById('filter-location').value,
+            location_id: document.getElementById('filter-location').value,
             type: document.getElementById('filter-type').value,
             brand: document.getElementById('filter-brand').value,
             fuel_type: document.getElementById('filter-fuel').value,
@@ -236,7 +237,16 @@
                         return;
                     }
                     
-                    container.innerHTML = cars.map(car => `
+                    container.innerHTML = cars.map(car => {
+                        // If grouped view (has AVAILABLE_COUNT), link by model_id
+                        // If specific car view (filtered by location), link by car_id
+                        const isGroupedView = car.AVAILABLE_COUNT && car.AVAILABLE_COUNT > 0;
+                        const bookUrl = isGroupedView ? `/book/model/${car.MODEL_ID}` : `/book/${car.CAR_ID}`;
+                        const locationText = isGroupedView 
+                            ? `${car.AVAILABLE_COUNT} units at ${car.LOCATION_COUNT || 'multiple'} location${car.LOCATION_COUNT > 1 ? 's' : ''}`
+                            : (car.HOME_LOCATION || 'Available');
+                        
+                        return `
                         <div class="car-card-listing">
                             <div class="car-image">
                                 <img src="${car.ATTACHMENTS ? '/uploads/' + car.ATTACHMENTS : 'https://via.placeholder.com/400x250?text=' + encodeURIComponent(car.BRAND_NAME + ' ' + car.MODEL_NAME)}" 
@@ -246,16 +256,20 @@
                             </div>
                             <div class="car-info">
                                 <h5>${car.BRAND_NAME} ${car.MODEL_NAME}</h5>
+                                <div class="car-location-badge">
+                                    <span class="location-icon">📍</span>
+                                    <span>${locationText}</span>
+                                </div>
                                 <p class="car-description">${car.DESCRIPTION || 'Comfortable and reliable vehicle perfect for your journey'}</p>
                                 <ul class="car-specs-list">
                                     <li><strong>Doors:</strong> ${car.DOOR || 4} Doors</li>
                                     <li><strong>Suitcase:</strong> ${car.SUITCASE || 0} Bags</li>
                                     <li><strong>Passengers:</strong> ${car.SEAT || 5} Passengers</li>
                                 </ul>
-                                <a href="/book/${car.CAR_ID}" class="btn btn-primary btn-block">Rent now</a>
+                                <a href="${bookUrl}" class="btn btn-primary btn-block">Rent now</a>
                             </div>
                         </div>
-                    `).join('');
+                    `}).join('');
                 } else {
                     container.innerHTML = `<p class="error">${data.message}</p>`;
                 }
